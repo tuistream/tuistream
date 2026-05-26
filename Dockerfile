@@ -3,23 +3,19 @@ FROM php:8.4-cli-alpine
 # Instalar dependencias del sistema y herramientas de compilación
 RUN apk add --no-cache \
     curl \
-    libpng-dev \
-    libxml2-dev \
-    zip \
-    unzip \
     git \
     bash \
-    postgresql-dev \
-    libzip-dev \
-    oniguruma-dev \
     nodejs \
     npm \
     supervisor \
-    linux-headers \
-    $PHPIZE_DEPS
+    linux-headers
 
-# Instalar extensiones de PHP necesarias para Laravel
-RUN docker-php-ext-install \
+# Añadir instalador de extensiones PHP (muy robusto y automático)
+ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
+
+# Instalar extensiones de PHP necesarias para Laravel, Redis y Swoole
+RUN chmod +x /usr/local/bin/install-php-extensions && \
+    install-php-extensions \
     pdo_pgsql \
     pgsql \
     zip \
@@ -27,11 +23,9 @@ RUN docker-php-ext-install \
     gd \
     intl \
     pcntl \
-    opcache
-
-# Instalar e habilitar Redis y Swoole para Laravel Octane
-RUN pecl install redis swoole \
-    && docker-php-ext-enable redis swoole
+    opcache \
+    redis \
+    swoole
 
 # Descargar e instalar Composer
 COPY --from=composer:2.8 /usr/bin/composer /usr/bin/composer
