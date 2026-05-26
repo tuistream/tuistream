@@ -1,0 +1,61 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tuistream_app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+      - "8080:8080"
+    volumes:
+      - .:/var/www
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_CONNECTION=pgsql
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=tuistream
+      - DB_USERNAME=tuistream
+      - DB_PASSWORD=secret_password_123
+      - REDIS_HOST=redis
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - tuistream_net
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: tuistream_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: tuistream
+      POSTGRES_USER: tuistream
+      POSTGRES_PASSWORD: secret_password_123
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - tuistream_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: tuistream_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    networks:
+      - tuistream_net
+
+networks:
+  tuistream_net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:

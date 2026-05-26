@@ -1,0 +1,55 @@
+<icecast>
+    <!-- Límites del servidor -->
+    <limits>
+        <clients>250</clients>
+        <sources>2</sources>
+        <queue-size>524288</queue-size>
+        <client-timeout>30</client-timeout>
+        <header-timeout>15</header-timeout>
+        <source-timeout>10</source-timeout>
+        <burst-on-connect>1</burst-on-connect>
+        <burst-size>65536</burst-size>
+    </limits>
+
+    <!-- Credenciales de autenticación -->
+    <authentication>
+        <source-password>source_pass_cee0a102</source-password>
+        <relay-password>source_pass_cee0a102</relay-password>
+        <admin-user>admin</admin-user>
+        <admin-password>admin_pass_672cafb9</admin-password>
+    </authentication>
+
+    <!-- Configuración del directorio de red y hostname -->
+    <hostname>localhost</hostname>
+
+    <!-- Configuración de Puertos del contenedor (siempre corre interno en 8000) -->
+    <listen-socket>
+        <port>8000</port>
+        <!-- Bind-address permite conexiones desde la red Docker -->
+        <bind-address>0.0.0.0</bind-address>
+    </listen-socket>
+
+    <http-headers>
+        <header name="Access-Control-Allow-Origin" value="*" />
+    </http-headers>
+
+    <!-- Directorios de recursos de Icecast -->
+    <paths>
+        <logdir>/var/log/icecast</logdir>
+        <webroot>/usr/share/icecast2/web</webroot>
+        <adminroot>/usr/share/icecast2/admin</adminroot>
+        <alias source="/" destination="/status.xsl"/>
+    </paths>
+
+    <!-- Logs -->
+    <logging>
+        <accesslog>access.log</accesslog>
+        <errorlog>error.log</errorlog>
+        <loglevel>3</loglevel> <!-- 3 = info, 4 = debug -->
+        <logsize>10000</logsize>
+    </logging>
+
+    <security>
+        <chroot>0</chroot>
+    </security>
+</icecast>
