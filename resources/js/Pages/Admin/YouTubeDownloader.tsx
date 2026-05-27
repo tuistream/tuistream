@@ -60,8 +60,13 @@ export default function YouTubeDownloader() {
         setResolving(true);
         setYoutubeInfo(null);
         try {
-            const res = await fetch(`/admin/youtube-downloader/info?url=${encodeURIComponent(url)}`);
-            if (res.ok) setYoutubeInfo(await res.json());
+            const res = await fetch(`/admin/youtube-downloader/info?url=${encodeURIComponent(url)}`, {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setYoutubeInfo(data);
+            }
         } catch { /* silent */ }
         setResolving(false);
     };
@@ -72,7 +77,9 @@ export default function YouTubeDownloader() {
         if (!active.length) return;
         const t = setInterval(async () => {
             try {
-                const res = await fetch('/admin/youtube-downloader/jobs');
+                const res = await fetch('/admin/youtube-downloader/jobs', {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                });
                 if (res.ok) setJobs(await res.json());
             } catch { /* silent */ }
         }, 3000);
@@ -85,7 +92,9 @@ export default function YouTubeDownloader() {
             onSuccess: () => {
                 reset('url', 'quality');
                 setYoutubeInfo(null);
-                fetch('/admin/youtube-downloader/jobs').then(r => r.json()).then(setJobs);
+                fetch('/admin/youtube-downloader/jobs', {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                }).then(r => r.json()).then(setJobs).catch(() => {});
             },
         });
     };

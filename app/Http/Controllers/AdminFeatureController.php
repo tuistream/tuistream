@@ -33,16 +33,29 @@ class AdminFeatureController extends Controller
     public function youtubePage()
     {
         $stations = Station::select('id', 'name', 'type')->get();
-        $jobs = array_values(Cache::get('youtube_downloader_jobs', []));
-        
-        // Sort by created_at desc
-        usort($jobs, function ($a, $b) {
+        $jobs = Cache::get('youtube_downloader_jobs', []);
+
+        // Limpiar jobs pendientes huérfanos (nunca procesados)
+        foreach ($jobs as $id => $job) {
+            if ($job['status'] === 'pending' && isset($job['created_at'])) {
+                $created = \DateTime::createFromFormat('d/m/Y H:i', $job['created_at']);
+                if ($created && $created->getTimestamp() < time() - 600) {
+                    $jobs[$id]['status'] = 'error';
+                    $jobs[$id]['error'] = 'Descarga cancelada: tiempo de espera excedido (posible yt-dlp no instalado).';
+                }
+            }
+        }
+        Cache::put('youtube_downloader_jobs', $jobs, 86400);
+
+        $jobsArray = array_values($jobs);
+
+        usort($jobsArray, function ($a, $b) {
             return strcmp($b['created_at'], $a['created_at']);
         });
 
         return Inertia::render('Admin/YouTubeDownloader', [
             'stations' => $stations,
-            'jobs' => $jobs,
+            'jobs' => $jobsArray,
         ]);
     }
 
@@ -81,7 +94,52 @@ class AdminFeatureController extends Controller
         $jobs[$jobId] = $jobData;
         Cache::put('youtube_downloader_jobs', $jobs, 86400);
 
-        // Ejecutar inmediatamente (síncrono) si no hay worker de cola disponible
+        // Verificar yt-dlp antes de intentar la descarga
+        $ytDlp = PHP_OS_FAMILY === 'Windows' ? 'yt-dlp.exe' : 'yt-dlp';
+        $found = false;
+        $paths = PHP_OS_FAMILY === 'Windows'
+            ? [base_path($ytDlp), base_path('bin/' . $ytDlp), 'C:\\yt-dlp\\' . $ytDlp]
+            : ['/usr/local/bin/yt-dlp', '/usr/bin/yt-dlp', base_path('yt-dlp'), base_path('bin/yt-dlp')];
+
+        foreach ($paths as $p) {
+            if (file_exists($p)) { $ytDlp = $p; $found = true; break; }
+        }
+
+        if (!$found && PHP_OS_FAMILY === 'Windows') {
+            $which = @shell_exec("where yt-dlp 2>&1");
+            if ($which && !str_contains($which, 'not found') && !str_contains($which, 'no se encont')) {
+                $ytDlp = trim(explode("\n", $which)[0]);
+                $found = true;
+            }
+        } elseif (!$found) {
+            $which = @shell_exec("which yt-dlp 2>/dev/null");
+            if ($which) { $ytDlp = trim($which); $found = true; }
+        }
+
+        if (!$found) {
+            $jobs = Cache::get('youtube_downloader_jobs', []);
+            if (isset($jobs[$jobId])) {
+                $jobs[$jobId]['status'] = 'error';
+                $jobs[$jobId]['error'] = 'yt-dlp no está instalado. Instálelo con: pip install yt-dlp (Linux) o winget install yt-dlp.yt-dlp (Windows).';
+                Cache::put('youtube_downloader_jobs', $jobs, 86400);
+            }
+            return redirect()->back()->with('error', 'yt-dlp no está instalado. Instálelo: pip install yt-dlp (Linux) o winget install yt-dlp.yt-dlp (Windows).');
+        }
+
+        // Intentar obtener titulo via oembed antes de descargar
+        try {
+            $oembed = Http::timeout(3)->get("https://www.youtube.com/oembed?url=" . urlencode($validated['url']) . "&format=json");
+            if ($oembed->successful() && $oembed->json('title')) {
+                $jobs = Cache::get('youtube_downloader_jobs', []);
+                if (isset($jobs[$jobId])) {
+                    $jobs[$jobId]['title'] = $oembed->json('title');
+                    Cache::put('youtube_downloader_jobs', $jobs, 86400);
+                }
+            }
+        } catch (\Exception $e) { /* ignorar */ }
+
+        // Ejecutar sincrono con timeout extendido
+        set_time_limit(600);
         $job = new DownloadYouTube(
             $jobId,
             $validated['url'],
@@ -94,8 +152,7 @@ class AdminFeatureController extends Controller
         try {
             $job->handle();
             return redirect()->back()->with('success', 'Descarga de YouTube completada correctamente.');
-        } catch (\Exception $e) {
-            // Marcar job como error
+        } catch (\Throwable $e) {
             $jobs = Cache::get('youtube_downloader_jobs', []);
             if (isset($jobs[$jobId])) {
                 $jobs[$jobId]['status'] = 'error';
@@ -110,40 +167,39 @@ class AdminFeatureController extends Controller
     {
         $url = $request->query('url');
         if (empty($url)) {
-            return response()->json(['error' => 'URL is required'], 400);
+            return response()->json(['error' => 'URL is required'], 400, [], JSON_UNESCAPED_SLASHES);
         }
+
+        $title = null;
+        $thumbnail = null;
 
         try {
             $oembedUrl = "https://www.youtube.com/oembed?url=" . urlencode($url) . "&format=json";
             $response = Http::timeout(5)->get($oembedUrl);
-            
             if ($response->successful()) {
-                return response()->json([
-                    'title' => $response->json('title'),
-                    'thumbnail' => $response->json('thumbnail_url'),
-                ]);
+                $title = $response->json('title');
+                $thumbnail = $response->json('thumbnail_url');
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::warning("Could not fetch YouTube info via oembed: " . $e->getMessage());
         }
 
-        // Return a mock/clean title based on URL if fetch fails
         return response()->json([
-            'title' => 'Video de YouTube (' . parse_url($url, PHP_URL_QUERY) . ')',
-            'thumbnail' => 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?q=80&w=200&auto=format&fit=crop',
-        ]);
+            'title' => $title ?? 'Video de YouTube',
+            'thumbnail' => $thumbnail ?? null,
+        ], 200, [], JSON_UNESCAPED_SLASHES);
     }
 
-    public function youtubeJobs()
+    public function youtubeJobs(Request $request)
     {
-        $jobs = array_values(Cache::get('youtube_downloader_jobs', []));
-        
-        // Sort by created_at desc
+        $jobsData = Cache::get('youtube_downloader_jobs', []);
+        $jobs = array_values($jobsData);
+
         usort($jobs, function ($a, $b) {
             return strcmp($b['created_at'], $a['created_at']);
         });
 
-        return response()->json($jobs);
+        return response()->json($jobs, 200, [], JSON_UNESCAPED_SLASHES);
     }
 
     // ────────────────────────────────────────────────────────────────────────
