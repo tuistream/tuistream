@@ -57,10 +57,10 @@ echo ""
 echo -e "  ${BOLD}Configuración del servidor${NC}"
 echo "  ─────────────────────────────────────────"
 if [[ -z "$DOMAIN" ]]; then
-    read -p "  Ingresa tu dominio (ej: radio.midominio.com): " DOMAIN
+    read -p "  Ingresa tu dominio (ej: radio.midominio.com): " DOMAIN < /dev/tty
 fi
 if [[ -z "$EMAIL" ]]; then
-    read -p "  Email para certificados SSL (Let's Encrypt): " EMAIL
+    read -p "  Email para certificados SSL (Let's Encrypt): " EMAIL < /dev/tty
 fi
 if [[ -z "$DOMAIN" || -z "$EMAIL" ]]; then
     error "Dominio y email son obligatorios para SSL automático."
@@ -210,10 +210,8 @@ MAIL_MAILER=log
 MAIL_FROM_ADDRESS="no-reply@${DOMAIN}"
 
 VITE_APP_NAME="${APP_NAME}"
-ENVEOF
 
-# Crear .env.docker con las variables para docker-compose
-cat > .env.docker <<ENVEOF
+# ── Docker Compose ───────────────────────────────────────────────────────
 DOMAIN=${DOMAIN}
 EMAIL=${EMAIL}
 DB_PASS=${DB_PASS}
@@ -221,7 +219,7 @@ REDIS_PASS=${REDIS_PASS}
 STREAM_PASS=${STREAM_PASS}
 ENVEOF
 
-info "Archivos .env generados"
+info "Archivo .env generado"
 
 # ── Paso 7: Construir y desplegar contenedores ────────────────────────────────
 step "Paso 7/8: Construyendo y desplegando servicios Docker..."
