@@ -94,7 +94,7 @@ case "$PKG_MANAGER" in
     apt)
         export DEBIAN_FRONTEND=noninteractive
         apt update -qq && apt upgrade -y -qq
-        apt install -y -qq curl wget git ca-certificates gnupg lsb-release ufw
+        apt install -y -qq curl wget git ca-certificates gnupg lsb-release ufw python3-pip ffmpeg
         ;;
     yum)
         yum update -y -q
@@ -236,6 +236,12 @@ docker compose -f docker-compose.prod.yml up -d 2>&1 | while read line; do
 done
 
 info "Contenedores desplegados"
+
+# ── Instalar yt-dlp en el contenedor app ─────────────────────────────────
+cmdout "Instalando YouTube Downloader (yt-dlp)..."
+docker exec tuistream_app pip3 install --no-cache-dir yt-dlp --break-system-packages 2>/dev/null || \
+    warn "yt-dlp no se pudo instalar en contenedor. YouTube Downloader no estará disponible."
+info "YouTube Downloader listo"
 
 # ── Paso 8: Post-instalación (migraciones, app key, storage) ──────────────────
 step "Paso 8/8: Configuración final..."

@@ -8,7 +8,13 @@ RUN apk add --no-cache \
     nodejs \
     npm \
     supervisor \
-    linux-headers
+    linux-headers \
+    python3 \
+    py3-pip \
+    ffmpeg
+
+# Instalar yt-dlp (YouTube Downloader)
+RUN pip3 install --no-cache-dir yt-dlp --break-system-packages
 
 # Añadir instalador de extensiones PHP (muy robusto y automático)
 ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
