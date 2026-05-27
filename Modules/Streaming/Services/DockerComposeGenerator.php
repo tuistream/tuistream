@@ -19,19 +19,27 @@ class DockerComposeGenerator
         $port = $station->port;
         $djPort = $port + 1000;
 
-        // PERFIL 1: VIDEO (Nginx RTMP + FFmpeg + HLS)
+        // PERFIL 1: VIDEO (Nginx RTMP nativo — instalado por install.bin)
+        // Las estaciones de video NO usan Docker. NGINX RTMP corre nativamente en el host.
+        // El instalador compila NGINX con el módulo RTMP desde fuentes.
+        // Cada estación recibe su propia configuración en /opt/tuistream/stations/{slug}/nginx.conf
+        // que se incluye desde el nginx.conf principal.
+        //
+        // Para gestionar la estación de video usar NginxRtmpConfigGenerator::generateInclude()
+        // y recargar nginx: nginx -s reload
         if ($station->type === 'video') {
             return <<<YAML
 version: '3.8'
 
 services:
-  nginx_rtmp:
+  nginx-rtmp:
     image: tiangolo/nginx-rtmp:latest
-    container_name: tuistream_station_{$slug}_video
+    container_name: tuistream_station_{$slug}_nginx_rtmp
     restart: unless-stopped
     ports:
-      - "{$port}:8000"   # Puerto HTTP para reproducir HLS (.m3u8) y ver estadísticas
-      - "{$djPort}:1935" # Puerto RTMP para recibir transmisión de OBS (ej: rtmp://ip:{$djPort}/live)
+      - "{$port}:80"
+      - "9011:1935"
+      - "{$djPort}:1935"
     volumes:
       - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./hls:/var/hls

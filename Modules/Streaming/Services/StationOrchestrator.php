@@ -28,7 +28,7 @@ class StationOrchestrator
         $this->composeGenerator = $composeGenerator;
         
         // Carpeta base de almacenamiento de estaciones
-        $this->baseStationsPath = PHP_OS_FAMILY === 'Windows' 
+        $this->baseStationsPath = (PHP_OS_FAMILY === 'Windows' || config('app.env') === 'local') 
             ? storage_path('tuistream/stations') 
             : '/var/tuistream/stations';
     }
@@ -213,9 +213,122 @@ CONF;
      */
     protected function shouldMockDocker(): bool
     {
+        // Si estamos dentro de un contenedor Docker, simular
+        if (file_exists('/.dockerenv')) {
+            return true;
+        }
+        // En Windows (desarrollo local)
         if (PHP_OS_FAMILY === 'Windows') {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Obtener estadísticas reales (oyentes y canción actual) consultando los servicios locales.
+     */
+    public function getRealStats(Station $station): array
+    {
+        $listeners = 0;
+        $nowPlaying = 'Estación fuera de línea';
+
+        if ($station->status !== 'online') {
+            return [
+                'listeners' => 0,
+                'now_playing' => $nowPlaying,
+            ];
+        }
+
+        $nowPlaying = 'Reproduciendo…';
+
+        // 1. VIDEO STATIONS (NGINX RTMP / HLS)
+        if ($station->type === 'video') {
+            try {
+                $response = \Illuminate\Support\Facades\Http::timeout(1)->get("http://localhost:{$station->port}/stat");
+                if ($response->successful()) {
+                    $xml = simplexml_load_string($response->body());
+                    if ($xml) {
+                        foreach ($xml->server->application as $app) {
+                            if (isset($app->live->stream)) {
+                                foreach ($app->live->stream as $stream) {
+                                    if ((string)$stream->name === (string)$station->stream_key) {
+                                        $listeners = max(0, (int)$stream->nclients - 1);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                $listeners = 0;
+            }
+            return [
+                'listeners' => $listeners,
+                'now_playing' => 'Transmisión de Televisión en Vivo',
+            ];
+        }
+
+        // 2. AUDIO STATIONS (Icecast / SHOUTcast)
+        if ($station->frontend === 'shoutcast') {
+            try {
+                $response = \Illuminate\Support\Facades\Http::timeout(1)->get("http://localhost:{$station->port}/stats?sid=1&json=1");
+                if ($response->successful()) {
+                    $data = $response->json();
+                    $listeners = (int)($data['uniquelisteners'] ?? $data['currentlisteners'] ?? 0);
+                    $nowPlaying = $data['songtitle'] ?? 'Transmisión de Audio en Vivo';
+                }
+            } catch (\Exception $e) {
+                $listeners = 0;
+            }
+        } else {
+            try {
+                $response = \Illuminate\Support\Facades\Http::timeout(1)->get("http://localhost:{$station->port}/status-json.xsl");
+                if ($response->successful()) {
+                    $data = $response->json();
+                    $source = $data['icestats']['source'] ?? null;
+                    if ($source) {
+                        if (isset($source['listeners'])) {
+                            $listeners = (int)$source['listeners'];
+                            $nowPlaying = $source['title'] ?? 'Transmisión de Audio en Vivo';
+                        } else if (is_array($source) && isset($source[0])) {
+                            $listeners = (int)($source[0]['listeners'] ?? 0);
+                            $nowPlaying = $source[0]['title'] ?? 'Transmisión de Audio en Vivo';
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                $listeners = 0;
+            }
+        }
+
+        $this->trackNowPlaying($station, $nowPlaying);
+
+        return [
+            'listeners' => $listeners,
+            'now_playing' => $nowPlaying,
+        ];
+    }
+
+    private function trackNowPlaying(Station $station, string $nowPlaying): void
+    {
+        if ($nowPlaying === 'Estación fuera de línea' || $nowPlaying === 'Reproduciendo…') {
+            return;
+        }
+
+        $key = "station_{$station->id}_recently_played";
+        $tracks = cache()->get($key, []);
+
+        // Deduplicate: remove if already exists, then prepend
+        $tracks = array_values(array_filter($tracks, fn(array $t) => $t['title'] !== $nowPlaying));
+
+        array_unshift($tracks, [
+            'title' => $nowPlaying,
+            'played_at' => now()->format('H:i'),
+            'timestamp' => now()->timestamp,
+        ]);
+
+        $tracks = array_slice($tracks, 0, 10);
+
+        cache()->put($key, $tracks, now()->addHours(24));
     }
 }

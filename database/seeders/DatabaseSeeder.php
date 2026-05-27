@@ -28,5 +28,7 @@ class DatabaseSeeder extends Seeder
             'password' => bcrypt('cliente123'),
             'role' => 'client',
         ]);
+
+        $this->call(EmailTemplateSeeder::class);
     }
 }

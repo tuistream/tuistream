@@ -1,0 +1,1289 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  TuiStream — Unified Installer / Updater / Uninstaller
+#  Compatible: AlmaLinux 9/10 · Ubuntu 22/24 · Debian 11/12
+#  Usage:
+#    ./install.bin start      → Instalar
+#    ./install.bin update     → Actualizar   (alias: tuistream update)
+#    ./install.bin uninstall  → Desinstalar
+# =============================================================================
+
+set -euo pipefail
+
+# ── Colors ──────────────────────────────────────────────────────────────────
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+NC='\033[0m'
+
+BOLD='\033[1m'
+
+# ── Constants ────────────────────────────────────────────────────────────────
+TUISTREAM_VERSION="1.0.0"
+PANEL_DIR="/opt/tuistream"
+NGINX_RTMP_DIR="/opt/tuistream/nginx-rtmp"
+STATIONS_DIR="/opt/tuistream/stations"
+SSL_DIR="/opt/tuistream/ssl"
+LOG_DIR="/var/log/tuistream"
+RELEASE_URL="https://recursos.tuistream.com/releases/latest/tuistream.tar.gz"
+NGINX_RTMP_MODULE_URL="https://github.com/arut/nginx-rtmp-module/archive/master.tar.gz"
+
+# Puertos del sistema
+PANEL_PORT=2020
+RTMP_PORT_START=1935
+HLS_PORT_START=8088
+STREAM_PORT_RANGE_START=8000
+STREAM_PORT_RANGE_END=65000
+
+# ── Helper Functions ─────────────────────────────────────────────────────────
+info()    { echo -e "${CYAN}[INFO]${NC} $*"; }
+success() { echo -e "${GREEN}[OK]${NC}   $*"; }
+warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
+error()   { echo -e "${RED}[ERR]${NC}  $*"; }
+step()    { echo -e "\n${BOLD}${BLUE}──── $* ────${NC}"; }
+die()     { error "$*"; exit 1; }
+
+require_root() {
+    [ "$EUID" -eq 0 ] || die "Este script debe ejecutarse como root. Usa: sudo ./install.bin $1"
+}
+
+print_banner() {
+    clear
+    echo -e "${CYAN}"
+    echo "  ████████╗██╗   ██╗██╗███████╗████████╗██████╗ ███████╗ █████╗ ███╗   ███╗"
+    echo "  ╚══██╔══╝██║   ██║██║██╔════╝╚══██╔══╝██╔══██╗██╔════╝██╔══██╗████╗ ████║"
+    echo "     ██║   ██║   ██║██║███████╗   ██║   ██████╔╝█████╗  ███████║██╔████╔██║"
+    echo "     ██║   ██║   ██║██║╚════██║   ██║   ██╔══██╗██╔══╝  ██╔══██║██║╚██╔╝██║"
+    echo "     ██║   ╚██████╔╝██║███████║   ██║   ██║  ██║███████╗██║  ██║██║ ╚═╝ ██║"
+    echo "     ╚═╝    ╚═════╝ ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝"
+    echo -e "${NC}"
+    echo -e "${WHITE}  Streaming Hosting Platform v${TUISTREAM_VERSION} — by Hostuis Group LLC${NC}"
+    echo -e "${CYAN}  https://hostuis.com${NC}"
+    echo ""
+    echo -e "${PURPLE}  ┌─────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${PURPLE}  │  Compatible: AlmaLinux 9/10 · Ubuntu 22/24 · Debian 11/12  │${NC}"
+    echo -e "${PURPLE}  └─────────────────────────────────────────────────────────┘${NC}"
+    echo ""
+}
+
+# ── OS Detection ─────────────────────────────────────────────────────────────
+detect_os() {
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS_ID="${ID:-unknown}"
+        OS_VERSION="${VERSION_ID:-0}"
+        OS_NAME="${PRETTY_NAME:-Unknown OS}"
+    else
+        die "No se puede detectar el sistema operativo. /etc/os-release no encontrado."
+    fi
+
+    case "$OS_ID" in
+        ubuntu)
+            PKG_MANAGER="apt"
+            case "$OS_VERSION" in
+                22.04|24.04) : ;;
+                *) warn "Ubuntu $OS_VERSION no está oficialmente soportado. Continuando de todos modos..." ;;
+            esac
+            ;;
+        debian)
+            PKG_MANAGER="apt"
+            case "$OS_VERSION" in
+                11|12) : ;;
+                *) warn "Debian $OS_VERSION no está oficialmente soportado." ;;
+            esac
+            ;;
+        almalinux|alma)
+            PKG_MANAGER="dnf"
+            ;;
+        rhel|centos|rocky)
+            PKG_MANAGER="dnf"
+            ;;
+        *)
+            die "Sistema operativo '$OS_NAME' no soportado."
+            ;;
+    esac
+
+    success "Sistema detectado: ${OS_NAME}"
+    info "Gestor de paquetes: ${PKG_MANAGER}"
+}
+
+# ── Package Installation ──────────────────────────────────────────────────────
+pkg_install() {
+    if [ "$PKG_MANAGER" = "apt" ]; then
+        DEBIAN_FRONTEND=noninteractive apt-get install -y "$@"
+    else
+        dnf install -y "$@"
+    fi
+}
+
+pkg_update() {
+    if [ "$PKG_MANAGER" = "apt" ]; then
+        DEBIAN_FRONTEND=noninteractive apt-get update -y
+    else
+        dnf makecache -y
+    fi
+}
+
+# ── System Requirements Check ─────────────────────────────────────────────────
+check_requirements() {
+    step "Verificando Requisitos del Sistema"
+
+    # CPU cores
+    CPU_CORES=$(nproc)
+    if [ "$CPU_CORES" -lt 1 ]; then
+        die "Se requiere al menos 1 CPU core."
+    fi
+    success "CPU: ${CPU_CORES} core(s) detectado(s)"
+
+    # RAM
+    TOTAL_RAM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    TOTAL_RAM_MB=$((TOTAL_RAM_KB / 1024))
+    if [ "$TOTAL_RAM_MB" -lt 1800 ]; then
+        die "Se requieren al menos 2 GB de RAM. Detectado: ${TOTAL_RAM_MB} MB"
+    fi
+    success "RAM: ${TOTAL_RAM_MB} MB disponibles"
+
+    # Disk
+    DISK_FREE_KB=$(df /opt 2>/dev/null | tail -1 | awk '{print $4}' || df / | tail -1 | awk '{print $4}')
+    DISK_FREE_MB=$((DISK_FREE_KB / 1024))
+    success "Disco libre: ${DISK_FREE_MB} MB"
+
+    # Check key ports
+    check_port() {
+        local port=$1
+        if ss -tlnp 2>/dev/null | grep -q ":${port} " || netstat -tlnp 2>/dev/null | grep -q ":${port} "; then
+            warn "Puerto ${port} ya está en uso. TuiStream puede tener conflictos."
+        fi
+    }
+    check_port 80
+    check_port 443
+    check_port "$PANEL_PORT"
+}
+
+# ── Firewall Configuration ────────────────────────────────────────────────────
+configure_firewall() {
+    step "Configurando Firewall"
+
+    # UFW (Debian/Ubuntu)
+    if command -v ufw &>/dev/null; then
+        ufw allow OpenSSH              2>/dev/null || true
+        ufw allow 22/tcp               2>/dev/null || true
+        ufw allow 21/tcp               2>/dev/null || true   # FTP
+        ufw allow 80/tcp               2>/dev/null || true   # HTTP / Let's Encrypt
+        ufw allow 443/tcp              2>/dev/null || true   # HTTPS
+        ufw allow "${PANEL_PORT}/tcp"  2>/dev/null || true   # Panel Admin
+        ufw allow 1935/tcp             2>/dev/null || true   # RTMP global ingest
+        ufw allow "${STREAM_PORT_RANGE_START}:${STREAM_PORT_RANGE_END}/tcp" 2>/dev/null || true
+        ufw --force enable             2>/dev/null || true
+        success "UFW configurado. Puertos expuestos: 22, 21, 80, 443, ${PANEL_PORT}, 1935, ${STREAM_PORT_RANGE_START}-${STREAM_PORT_RANGE_END}"
+
+    # firewalld (AlmaLinux/RHEL)
+    elif command -v firewall-cmd &>/dev/null; then
+        systemctl start firewalld && systemctl enable firewalld
+        firewall-cmd --permanent --add-service=ssh
+        firewall-cmd --permanent --add-service=ftp
+        firewall-cmd --permanent --add-service=http
+        firewall-cmd --permanent --add-service=https
+        firewall-cmd --permanent --add-port="${PANEL_PORT}/tcp"
+        firewall-cmd --permanent --add-port="1935/tcp"
+        firewall-cmd --permanent --add-port="${STREAM_PORT_RANGE_START}-${STREAM_PORT_RANGE_END}/tcp"
+        firewall-cmd --reload
+        success "firewalld configurado para AlmaLinux/RHEL."
+
+    else
+        warn "No se detectó UFW ni firewalld. Configura el firewall manualmente:"
+        warn "Puertos requeridos: 22, 21, 80, 443, ${PANEL_PORT}, 1935, ${STREAM_PORT_RANGE_START}-${STREAM_PORT_RANGE_END}"
+    fi
+}
+
+# ── Base Dependencies ─────────────────────────────────────────────────────────
+install_base_deps() {
+    step "Instalando Dependencias Base"
+
+    pkg_update
+
+    if [ "$PKG_MANAGER" = "apt" ]; then
+        pkg_install \
+            curl wget git unzip tar gzip build-essential \
+            ca-certificates gnupg lsb-release software-properties-common \
+            openssl certbot python3-certbot-nginx \
+            ffmpeg libpcre3 libpcre3-dev zlib1g-dev libssl-dev \
+            libxml2-dev libxslt1-dev libgd-dev \
+            supervisor cron logrotate net-tools
+    else
+        # AlmaLinux / RHEL — enable EPEL + CRB
+        dnf install -y epel-release
+        dnf config-manager --set-enabled crb 2>/dev/null || \
+            dnf config-manager --set-enabled powertools 2>/dev/null || true
+        pkg_install \
+            curl wget git unzip tar gzip gcc gcc-c++ make \
+            ca-certificates openssl certbot python3-certbot-nginx \
+            ffmpeg pcre pcre-devel zlib-devel openssl-devel \
+            libxml2-devel libxslt-devel gd-devel \
+            supervisor cronie logrotate net-tools
+    fi
+
+    success "Dependencias base instaladas."
+}
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+install_docker() {
+    step "Instalando Docker Engine"
+
+    if command -v docker &>/dev/null; then
+        success "Docker ya instalado: $(docker --version)"
+        return
+    fi
+
+    if [ "$PKG_MANAGER" = "apt" ]; then
+        install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/$(. /etc/os-release && echo "$ID")/gpg \
+            | gpg --dearmor -o /etc/apt/keyrings/docker.gpg --yes
+        chmod a+r /etc/apt/keyrings/docker.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+https://download.docker.com/linux/$(. /etc/os-release && echo "$ID") \
+$(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+            | tee /etc/apt/sources.list.d/docker.list > /dev/null
+        apt-get update -y
+        pkg_install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    else
+        dnf install -y yum-utils
+        yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+        pkg_install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    fi
+
+    systemctl start docker && systemctl enable docker
+    success "Docker instalado y activo."
+}
+
+# ── NGINX with RTMP Module (Native/Bare Metal) ────────────────────────────────
+install_nginx_rtmp() {
+    step "Compilando e Instalando NGINX con módulo RTMP"
+
+    info "Descargando NGINX y nginx-rtmp-module desde fuentes oficiales..."
+
+    # Obtener versión estable de NGINX
+    NGINX_VERSION=$(curl -s https://nginx.org/en/download.html 2>/dev/null \
+        | grep -o 'nginx-[0-9]*\.[0-9]*\.[0-9]*\.tar\.gz' \
+        | head -1 \
+        | sed 's/nginx-//' | sed 's/\.tar\.gz//' \
+        || echo "1.26.2")
+
+    info "Usando NGINX versión: ${NGINX_VERSION}"
+
+    BUILD_DIR=$(mktemp -d)
+    cd "$BUILD_DIR"
+
+    # Descargar NGINX
+    curl -fsSL "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz" -o nginx.tar.gz
+    tar xzf nginx.tar.gz
+
+    # Descargar nginx-rtmp-module
+    curl -fsSL "$NGINX_RTMP_MODULE_URL" -o nginx-rtmp-module.tar.gz
+    tar xzf nginx-rtmp-module.tar.gz
+    RTMP_MODULE_DIR=$(ls -d nginx-rtmp-module-*)
+
+    # Compilar NGINX con módulo RTMP
+    cd "nginx-${NGINX_VERSION}"
+    ./configure \
+        --prefix=/etc/nginx \
+        --sbin-path=/usr/sbin/nginx \
+        --modules-path=/usr/lib64/nginx/modules \
+        --conf-path=/etc/nginx/nginx.conf \
+        --error-log-path=/var/log/nginx/error.log \
+        --http-log-path=/var/log/nginx/access.log \
+        --pid-path=/var/run/nginx.pid \
+        --lock-path=/var/run/nginx.lock \
+        --http-client-body-temp-path=/var/cache/nginx/client_temp \
+        --http-proxy-temp-path=/var/cache/nginx/proxy_temp \
+        --http-fastcgi-temp-path=/var/cache/nginx/fastcgi_temp \
+        --http-uwsgi-temp-path=/var/cache/nginx/uwsgi_temp \
+        --http-scgi-temp-path=/var/cache/nginx/scgi_temp \
+        --with-http_ssl_module \
+        --with-http_realip_module \
+        --with-http_addition_module \
+        --with-http_sub_module \
+        --with-http_dav_module \
+        --with-http_flv_module \
+        --with-http_mp4_module \
+        --with-http_gunzip_module \
+        --with-http_gzip_static_module \
+        --with-http_random_index_module \
+        --with-http_secure_link_module \
+        --with-http_stub_status_module \
+        --with-http_auth_request_module \
+        --with-http_xslt_module=dynamic \
+        --with-http_image_filter_module=dynamic \
+        --with-http_geoip_module=dynamic \
+        --with-threads \
+        --with-stream \
+        --with-stream_ssl_module \
+        --with-stream_ssl_preread_module \
+        --with-stream_realip_module \
+        --with-stream_geoip_module=dynamic \
+        --with-http_slice_module \
+        --with-mail \
+        --with-mail_ssl_module \
+        --with-compat \
+        --with-file-aio \
+        --with-http_v2_module \
+        --add-module="../${RTMP_MODULE_DIR}" \
+        2>&1 | tail -5
+
+    make -j"$(nproc)"
+    make install
+
+    # Crear directorios necesarios
+    mkdir -p /var/cache/nginx/{client_temp,proxy_temp,fastcgi_temp,uwsgi_temp,scgi_temp}
+    mkdir -p /var/log/nginx
+    mkdir -p /etc/nginx/{sites-available,sites-enabled,conf.d}
+    mkdir -p /var/hls  # Directorio para segmentos HLS
+
+    # Limpiar fuentes temporales
+    cd /tmp && rm -rf "$BUILD_DIR"
+
+    success "NGINX ${NGINX_VERSION} con módulo RTMP compilado e instalado en /usr/sbin/nginx"
+
+    # Crear servicio systemd para nginx
+    cat > /etc/systemd/system/nginx.service << 'EOF'
+[Unit]
+Description=NGINX HTTP / RTMP Streaming Server (TuiStream)
+After=network.target
+
+[Service]
+Type=forking
+PIDFile=/var/run/nginx.pid
+ExecStartPre=/usr/sbin/nginx -t
+ExecStart=/usr/sbin/nginx
+ExecReload=/bin/kill -s HUP $MAINPID
+ExecStop=/bin/kill -s QUIT $MAINPID
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable nginx
+    success "Servicio nginx creado con systemd."
+}
+
+# ── Write Main NGINX Config ───────────────────────────────────────────────────
+write_nginx_main_config() {
+    step "Generando Configuración Principal de NGINX"
+
+    cat > /etc/nginx/nginx.conf << 'NGINX_EOF'
+# ── NGINX Main Config — TuiStream RTMP+HLS Server ──────────────
+worker_processes auto;
+rtmp_auto_push on;
+rtmp_auto_push_reconnect 1s;
+
+error_log /var/log/nginx/error.log warn;
+pid       /var/run/nginx.pid;
+
+events {
+    worker_connections 4096;
+    use epoll;
+    multi_accept on;
+}
+
+# ────────────────────────────────────────────────────────────────
+#  RTMP Block — Ingest RTMP streams from OBS / Encoders
+# ────────────────────────────────────────────────────────────────
+rtmp {
+    server {
+        listen 1935;
+        chunk_size 4096;
+        timeout 30s;
+        max_connections 1000;
+
+        # ── Live Streaming Application ───────────────────────────
+        application live {
+            live on;
+            record off;
+
+            # HLS output
+            hls on;
+            hls_path /var/hls/live;
+            hls_fragment 2s;
+            hls_playlist_length 10s;
+            hls_cleanup on;
+
+            # DASH output
+            dash on;
+            dash_path /var/dash/live;
+            dash_fragment 2s;
+            dash_playlist_length 10s;
+            dash_cleanup on;
+
+            # Notify TuiStream Panel when stream starts/stops
+            on_publish http://127.0.0.1:8000/api/stream/on-publish;
+            on_publish_done http://127.0.0.1:8000/api/stream/on-publish-done;
+
+            # Allow any encoder (OBS, FFmpeg, etc.)
+            allow publish all;
+            allow play all;
+        }
+
+        # ── TV Station Application ───────────────────────────────
+        application tv {
+            live on;
+            record off;
+
+            hls on;
+            hls_path /var/hls/tv;
+            hls_fragment 2s;
+            hls_playlist_length 10s;
+            hls_cleanup on;
+
+            allow publish all;
+            allow play all;
+        }
+
+        # ── Stream Relay Application ─────────────────────────────
+        application relay {
+            live on;
+            record off;
+            allow publish all;
+            allow play all;
+        }
+    }
+}
+
+# ────────────────────────────────────────────────────────────────
+#  HTTP Block — HLS delivery, panel proxy, API, stats
+# ────────────────────────────────────────────────────────────────
+http {
+    include      /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    sendfile           on;
+    tcp_nopush         on;
+    tcp_nodelay        on;
+    keepalive_timeout  65;
+    gzip               on;
+    gzip_types text/plain application/json application/javascript text/css;
+
+    # Logging
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for"';
+    access_log /var/log/nginx/access.log main;
+
+    # Load site configs
+    include /etc/nginx/sites-enabled/*;
+    include /etc/nginx/conf.d/*.conf;
+}
+NGINX_EOF
+
+    success "nginx.conf principal escrito."
+}
+
+# ── Panel Reverse Proxy (Port 2020) ──────────────────────────────────────────
+write_panel_vhost() {
+    local DOMAIN="${1:-_}"
+    local CERT="${2:-/opt/tuistream/ssl/selfsigned.crt}"
+    local KEY="${3:-/opt/tuistream/ssl/selfsigned.key}"
+
+    cat > /etc/nginx/sites-available/tuistream-panel << EOF
+# ── TuiStream Admin Panel — Port 2020 ──────────────────────────
+server {
+    listen 80;
+    server_name ${DOMAIN};
+
+    # Let's Encrypt ACME challenge
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+        allow all;
+    }
+
+    location / {
+        return 301 https://\$host:${PANEL_PORT}\$request_uri;
+    }
+}
+
+server {
+    listen ${PANEL_PORT} ssl http2 default_server;
+    server_name ${DOMAIN};
+
+    ssl_certificate     ${CERT};
+    ssl_certificate_key ${KEY};
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Frame-Options SAMEORIGIN;
+    add_header X-Content-Type-Options nosniff;
+
+    client_max_body_size 3072M;
+
+    # Panel SPA
+    location / {
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_set_header   Host \$host;
+        proxy_set_header   X-Real-IP \$remote_addr;
+        proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 120;
+    }
+
+    # WebSocket (Laravel Reverb)
+    location /app {
+        proxy_pass         http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade \$http_upgrade;
+        proxy_set_header   Connection "Upgrade";
+        proxy_set_header   Host \$host;
+        proxy_cache_bypass \$http_upgrade;
+    }
+}
+EOF
+
+    ln -sf /etc/nginx/sites-available/tuistream-panel /etc/nginx/sites-enabled/
+    success "Virtual host del panel escrito en puerto ${PANEL_PORT}."
+}
+
+# ── HLS Delivery VHost ────────────────────────────────────────────────────────
+write_hls_vhost() {
+    cat > /etc/nginx/conf.d/tuistream-hls.conf << 'EOF'
+# ── TuiStream HLS Delivery ──────────────────────────────────────
+server {
+    listen 8088;
+    server_name _;
+
+    # CORS — needed for video players in browsers
+    add_header 'Access-Control-Allow-Origin'  '*' always;
+    add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
+    add_header 'Access-Control-Allow-Headers'  'Range' always;
+
+    # HLS segments and playlists
+    location /hls {
+        types {
+            application/vnd.apple.mpegurl m3u8;
+            video/mp2t                    ts;
+        }
+        root      /var;
+        add_header Cache-Control no-cache;
+        add_header X-Accel-Buffering no;
+    }
+
+    # DASH manifests and segments
+    location /dash {
+        types {
+            application/dash+xml mpd;
+            video/mp2t           ts;
+        }
+        root      /var;
+        add_header Cache-Control no-cache;
+    }
+
+    # NGINX RTMP Stats endpoint
+    location /stat {
+        rtmp_stat all;
+        rtmp_stat_stylesheet /etc/nginx/html/stat.xsl;
+        add_header Refresh "3; $request_uri";
+    }
+
+    location /stat.xsl {
+        alias /etc/nginx/html/stat.xsl;
+    }
+
+    # Control API (kick streams, redirect, etc.)
+    location /control {
+        rtmp_control all;
+    }
+}
+EOF
+
+    # Crear directorios HLS/DASH
+    mkdir -p /var/hls/{live,tv}
+    mkdir -p /var/dash/{live,tv}
+    chmod -R 777 /var/hls /var/dash
+
+    success "VHost HLS/DASH escrito en puerto 8088."
+}
+
+# ── Self-Signed SSL ───────────────────────────────────────────────────────────
+generate_self_signed_ssl() {
+    mkdir -p "$SSL_DIR"
+    openssl req -x509 -nodes -days 3650 -newkey rsa:4096 \
+        -keyout "${SSL_DIR}/selfsigned.key" \
+        -out    "${SSL_DIR}/selfsigned.crt" \
+        -subj   "/C=US/ST=Stream/L=Online/O=TuiStream/OU=Panel/CN=tuistream.local" \
+        2>/dev/null
+    success "Certificado SSL auto-firmado generado (válido 10 años)."
+}
+
+# ── Let's Encrypt ─────────────────────────────────────────────────────────────
+setup_letsencrypt() {
+    local DOMAIN="$1"
+    local EMAIL="${2:-admin@${DOMAIN}}"
+
+    info "Solicitando certificado Let's Encrypt para ${DOMAIN}..."
+    mkdir -p /var/www/html
+
+    certbot certonly \
+        --webroot -w /var/www/html \
+        -d "$DOMAIN" \
+        --non-interactive \
+        --agree-tos \
+        -m "$EMAIL" \
+        --force-renewal \
+        2>&1 | tail -5
+
+    if [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
+        success "Certificado Let's Encrypt obtenido para ${DOMAIN}"
+        echo "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
+        echo "/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
+        return 0
+    else
+        warn "Let's Encrypt falló. Se usará SSL auto-firmado."
+        return 1
+    fi
+}
+
+# ── PHP 8.4 ───────────────────────────────────────────────────────────────────
+install_php() {
+    step "Instalando PHP 8.4"
+
+    if php -v 2>/dev/null | grep -q "8\.[4-9]"; then
+        success "PHP 8.4+ ya instalado."
+        return
+    fi
+
+    if [ "$PKG_MANAGER" = "apt" ]; then
+        # Ondrej PPA for Ubuntu/Debian
+        add-apt-repository ppa:ondrej/php -y 2>/dev/null || \
+            curl -sSL https://packages.sury.org/php/apt.gpg | apt-key add - 2>/dev/null && \
+            echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" \
+                > /etc/apt/sources.list.d/sury-php.list
+        apt-get update -y
+        pkg_install \
+            php8.4 php8.4-fpm php8.4-cli php8.4-common \
+            php8.4-pgsql php8.4-redis php8.4-curl php8.4-mbstring \
+            php8.4-xml php8.4-zip php8.4-bcmath php8.4-gd \
+            php8.4-intl php8.4-opcache php8.4-pcov
+    else
+        dnf install -y https://rpms.remirepo.net/enterprise/remi-release-$(rpm -E %rhel).rpm || true
+        dnf module reset php -y && dnf module enable php:remi-8.4 -y
+        pkg_install \
+            php84 php84-php-fpm php84-php-cli php84-php-common \
+            php84-php-pgsql php84-php-pecl-redis php84-php-curl \
+            php84-php-mbstring php84-php-xml php84-php-zip \
+            php84-php-bcmath php84-php-gd php84-php-intl php84-php-opcache
+        ln -sf /usr/bin/php84 /usr/bin/php 2>/dev/null || true
+    fi
+
+    success "PHP $(php -r 'echo PHP_VERSION;') instalado."
+}
+
+# ── PostgreSQL 17 ─────────────────────────────────────────────────────────────
+install_postgres() {
+    step "Instalando PostgreSQL 17"
+
+    if command -v psql &>/dev/null; then
+        success "PostgreSQL ya instalado."
+        return
+    fi
+
+    if [ "$PKG_MANAGER" = "apt" ]; then
+        install -d /usr/share/postgresql-common/pgdg
+        curl -sSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+        sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+        apt-get update -y
+        pkg_install postgresql-17 postgresql-client-17
+    else
+        dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-$(rpm -E %rhel)-x86_64/pgdg-redhat-repo-latest.noarch.rpm || true
+        dnf -qy module disable postgresql
+        pkg_install postgresql17-server postgresql17
+        /usr/pgsql-17/bin/postgresql-17-setup initdb
+        systemctl enable postgresql-17
+    fi
+
+    systemctl start postgresql 2>/dev/null || systemctl start postgresql-17 2>/dev/null || true
+    systemctl enable postgresql 2>/dev/null || systemctl enable postgresql-17 2>/dev/null || true
+
+    # Crear base de datos y usuario
+    DB_PASS=$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 20)
+    su -c "psql -c \"CREATE USER tuistream WITH PASSWORD '${DB_PASS}';\"" postgres 2>/dev/null || true
+    su -c "psql -c \"CREATE DATABASE tuistream OWNER tuistream;\"" postgres 2>/dev/null || true
+    su -c "psql -c \"GRANT ALL PRIVILEGES ON DATABASE tuistream TO tuistream;\"" postgres 2>/dev/null || true
+
+    echo "$DB_PASS" > "${SSL_DIR}/.db_pass"
+    chmod 600 "${SSL_DIR}/.db_pass"
+    success "PostgreSQL 17 instalado. DB: tuistream / User: tuistream"
+}
+
+# ── Redis ─────────────────────────────────────────────────────────────────────
+install_redis() {
+    step "Instalando Redis 7"
+
+    if command -v redis-cli &>/dev/null; then
+        success "Redis ya instalado."
+        return
+    fi
+
+    pkg_install redis
+    systemctl start redis && systemctl enable redis
+    success "Redis instalado y activo."
+}
+
+# ── Composer ──────────────────────────────────────────────────────────────────
+install_composer() {
+    if command -v composer &>/dev/null; then
+        success "Composer ya instalado."
+        return
+    fi
+
+    step "Instalando Composer"
+    curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+    success "Composer instalado."
+}
+
+# ── Node.js 22 ────────────────────────────────────────────────────────────────
+install_nodejs() {
+    if command -v node &>/dev/null && node -e "process.exit(process.version.split('.')[0].slice(1) >= 20 ? 0 : 1)"; then
+        success "Node.js $(node -v) ya instalado."
+        return
+    fi
+
+    step "Instalando Node.js 22 LTS"
+    curl -fsSL https://rpm.nodesource.com/setup_22.x | bash - 2>/dev/null || \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    pkg_install nodejs
+    success "Node.js $(node -v) instalado."
+}
+
+# ── Deploy Panel App ──────────────────────────────────────────────────────────
+deploy_panel() {
+    step "Desplegando TuiStream Panel"
+
+    mkdir -p "$PANEL_DIR"
+    mkdir -p "$STATIONS_DIR"
+    mkdir -p "$LOG_DIR"
+
+    info "Descargando TuiStream desde ${RELEASE_URL}..."
+    if curl -fsSL --connect-timeout 30 "$RELEASE_URL" -o /tmp/tuistream.tar.gz 2>/dev/null; then
+        tar xzf /tmp/tuistream.tar.gz -C "$PANEL_DIR" --strip-components=1
+        rm -f /tmp/tuistream.tar.gz
+        success "Panel descargado y extraído en ${PANEL_DIR}"
+    else
+        warn "No se pudo descargar desde URL remota. Usando instalación local si existe..."
+        if [ -d "/tmp/tuistream-source" ]; then
+            cp -r /tmp/tuistream-source/. "$PANEL_DIR/"
+        else
+            error "No hay fuente disponible. Por favor coloca los archivos en /tmp/tuistream-source/"
+        fi
+    fi
+
+    # Configurar .env
+    DB_PASS=$(cat "${SSL_DIR}/.db_pass" 2>/dev/null || echo "changeme")
+    APP_KEY=$(openssl rand -base64 32)
+    ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
+
+    cat > "${PANEL_DIR}/.env" << EOF
+APP_NAME=TuiStream
+APP_ENV=production
+APP_KEY=base64:${APP_KEY}
+APP_DEBUG=false
+APP_URL=https://localhost:${PANEL_PORT}
+
+LOG_CHANNEL=daily
+LOG_LEVEL=warning
+
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=tuistream
+DB_USERNAME=tuistream
+DB_PASSWORD=${DB_PASS}
+
+CACHE_DRIVER=redis
+QUEUE_CONNECTION=redis
+SESSION_DRIVER=redis
+SESSION_LIFETIME=120
+
+REDIS_HOST=127.0.0.1
+REDIS_PASSWORD=null
+REDIS_PORT=6379
+
+BROADCAST_DRIVER=reverb
+REVERB_APP_ID=tuistream
+REVERB_APP_KEY=$(openssl rand -hex 16)
+REVERB_APP_SECRET=$(openssl rand -hex 32)
+REVERB_HOST=localhost
+REVERB_PORT=8080
+
+TUISTREAM_PANEL_PORT=${PANEL_PORT}
+TUISTREAM_NGINX_RTMP_PATH=/usr/sbin/nginx
+TUISTREAM_HLS_PATH=/var/hls
+TUISTREAM_DASH_PATH=/var/dash
+TUISTREAM_STATIONS_DIR=${STATIONS_DIR}
+TUISTREAM_ADMIN_EMAIL=admin@tuistream.local
+TUISTREAM_ADMIN_PASSWORD=${ADMIN_PASS}
+EOF
+
+    cd "$PANEL_DIR"
+
+    # Instalar dependencias PHP
+    if [ -f "composer.json" ]; then
+        composer install --no-dev --optimize-autoloader --no-interaction 2>&1 | tail -5
+    fi
+
+    # Instalar dependencias Node y compilar frontend
+    if [ -f "package.json" ]; then
+        npm ci --silent
+        npm run build --silent
+    fi
+
+    # Permisos
+    chown -R www-data:www-data "$PANEL_DIR" 2>/dev/null || \
+    chown -R nginx:nginx "$PANEL_DIR" 2>/dev/null || true
+    chmod -R 755 "$PANEL_DIR"
+    chmod -R 775 "${PANEL_DIR}/storage" "${PANEL_DIR}/bootstrap/cache" 2>/dev/null || true
+
+    # Migraciones y seeders
+    if [ -f "artisan" ]; then
+        php artisan key:generate --force
+        php artisan migrate --force --seed
+        php artisan config:cache
+        php artisan route:cache
+        php artisan view:cache
+        php artisan storage:link
+    fi
+
+    echo "$ADMIN_PASS" > "${SSL_DIR}/.admin_pass"
+    chmod 600 "${SSL_DIR}/.admin_pass"
+    success "Panel TuiStream desplegado. Admin password guardado en ${SSL_DIR}/.admin_pass"
+}
+
+# ── Supervisor (Queue Workers + Horizon) ──────────────────────────────────────
+setup_supervisor() {
+    step "Configurando Supervisor para Workers de Cola"
+
+    mkdir -p /etc/supervisor/conf.d
+
+    cat > /etc/supervisor/conf.d/tuistream.conf << EOF
+[program:tuistream-horizon]
+process_name=%(program_name)s
+command=php ${PANEL_DIR}/artisan horizon
+autostart=true
+autorestart=true
+user=www-data
+numprocs=1
+redirect_stderr=true
+stdout_logfile=${LOG_DIR}/horizon.log
+stopwaitsecs=3600
+
+[program:tuistream-reverb]
+process_name=%(program_name)s
+command=php ${PANEL_DIR}/artisan reverb:start --host=0.0.0.0 --port=8080
+autostart=true
+autorestart=true
+user=www-data
+numprocs=1
+redirect_stderr=true
+stdout_logfile=${LOG_DIR}/reverb.log
+
+[program:tuistream-queue]
+process_name=%(program_name)s_%(process_num)02d
+command=php ${PANEL_DIR}/artisan queue:work redis --sleep=3 --tries=3 --max-time=3600
+autostart=true
+autorestart=true
+user=www-data
+numprocs=2
+redirect_stderr=true
+stdout_logfile=${LOG_DIR}/worker.log
+
+[program:tuistream-scheduler]
+process_name=%(program_name)s
+command=bash -c "while [ true ]; do (cd ${PANEL_DIR} && php artisan schedule:run >> ${LOG_DIR}/scheduler.log 2>&1); sleep 60; done"
+autostart=true
+autorestart=true
+user=www-data
+numprocs=1
+redirect_stderr=true
+stdout_logfile=${LOG_DIR}/scheduler.log
+EOF
+
+    supervisorctl reread && supervisorctl update
+    supervisorctl start all 2>/dev/null || supervisord -c /etc/supervisor/supervisord.conf 2>/dev/null || true
+    systemctl enable supervisor 2>/dev/null || true
+    success "Supervisor configurado con Horizon, Reverb, Queue Workers y Scheduler."
+}
+
+# ── tuistream global command ─────────────────────────────────────────────────
+install_tuistream_cmd() {
+    cat > /usr/local/bin/tuistream << 'EOF'
+#!/usr/bin/env bash
+# TuiStream — Global Management Command
+# Usage: tuistream [start|stop|restart|update|status|logs|nginx-test]
+
+PANEL_DIR="/opt/tuistream"
+LOG_DIR="/var/log/tuistream"
+
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+CYAN='\033[0;36m'; NC='\033[0m'; BOLD='\033[1m'
+
+case "${1:-help}" in
+    start)
+        echo -e "${CYAN}Iniciando servicios TuiStream...${NC}"
+        systemctl start nginx redis postgresql supervisor 2>/dev/null || true
+        supervisorctl start all 2>/dev/null || true
+        echo -e "${GREEN}✓ Todos los servicios iniciados.${NC}"
+        ;;
+    stop)
+        echo -e "${YELLOW}Deteniendo servicios TuiStream...${NC}"
+        supervisorctl stop all 2>/dev/null || true
+        echo -e "${GREEN}✓ Workers detenidos.${NC}"
+        ;;
+    restart)
+        echo -e "${CYAN}Reiniciando TuiStream...${NC}"
+        supervisorctl restart all 2>/dev/null || true
+        systemctl reload nginx 2>/dev/null || true
+        echo -e "${GREEN}✓ Reiniciado.${NC}"
+        ;;
+    status)
+        echo -e "${BOLD}${CYAN}── TuiStream Status ─────────────────────${NC}"
+        echo -e "${CYAN}NGINX:${NC}      $(systemctl is-active nginx 2>/dev/null)"
+        echo -e "${CYAN}Redis:${NC}      $(systemctl is-active redis 2>/dev/null)"
+        echo -e "${CYAN}PostgreSQL:${NC} $(systemctl is-active postgresql postgresql-17 2>/dev/null | head -1)"
+        echo -e "${CYAN}Supervisor:${NC} $(systemctl is-active supervisor 2>/dev/null)"
+        echo ""
+        supervisorctl status 2>/dev/null || true
+        ;;
+    update)
+        echo -e "${CYAN}Actualizando TuiStream...${NC}"
+        if [ -f /tmp/install.bin ]; then
+            bash /tmp/install.bin update
+        else
+            curl -fsSL https://recursos.tuistream.com/install.bin -o /tmp/install.bin \
+                && chmod +x /tmp/install.bin \
+                && bash /tmp/install.bin update
+        fi
+        ;;
+    nginx-test)
+        /usr/sbin/nginx -t
+        ;;
+    nginx-reload)
+        /usr/sbin/nginx -s reload
+        echo -e "${GREEN}✓ NGINX recargado.${NC}"
+        ;;
+    logs)
+        SERVICE="${2:-horizon}"
+        tail -n 100 -f "${LOG_DIR}/${SERVICE}.log" 2>/dev/null \
+            || journalctl -u tuistream-"$SERVICE" -f 2>/dev/null
+        ;;
+    artisan)
+        shift
+        php "${PANEL_DIR}/artisan" "$@"
+        ;;
+    *)
+        echo -e "${BOLD}TuiStream Management CLI${NC}"
+        echo ""
+        echo "  tuistream start        → Iniciar todos los servicios"
+        echo "  tuistream stop         → Detener workers"
+        echo "  tuistream restart      → Reiniciar todos los servicios"
+        echo "  tuistream status       → Estado del sistema"
+        echo "  tuistream update       → Actualizar TuiStream"
+        echo "  tuistream nginx-test   → Verificar configuración NGINX"
+        echo "  tuistream nginx-reload → Recargar NGINX sin corte"
+        echo "  tuistream logs [name]  → Ver logs (horizon|reverb|worker|scheduler)"
+        echo "  tuistream artisan ...  → Ejecutar comandos artisan"
+        ;;
+esac
+EOF
+
+    chmod +x /usr/local/bin/tuistream
+    success "Comando global 'tuistream' instalado en /usr/local/bin/tuistream"
+}
+
+# ── Logrotate ─────────────────────────────────────────────────────────────────
+setup_logrotate() {
+    cat > /etc/logrotate.d/tuistream << EOF
+${LOG_DIR}/*.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 0640 www-data adm
+    sharedscripts
+    postrotate
+        supervisorctl reload > /dev/null 2>&1 || true
+    endscript
+}
+
+/var/log/nginx/*.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    sharedscripts
+    postrotate
+        /usr/sbin/nginx -s reopen > /dev/null 2>&1 || true
+    endscript
+}
+EOF
+    success "Logrotate configurado."
+}
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  ACTION: START (Full Install)
+# ═════════════════════════════════════════════════════════════════════════════
+do_install() {
+    print_banner
+    require_root start
+
+    echo -e "${WHITE}Setup will now guide you through the installation process.${NC}"
+    echo -e "${YELLOW}NOTE: After Installation is completed, login to your Admin Panel and Insert your License Key.${NC}"
+    echo ""
+
+    detect_os
+    check_requirements
+    install_base_deps
+    install_docker
+    install_php
+    install_postgres
+    install_redis
+    install_composer
+    install_nodejs
+    install_nginx_rtmp
+    write_nginx_main_config
+    generate_self_signed_ssl
+
+    # SSL / Domain setup
+    echo ""
+    read -p "¿Desea configurar un dominio con SSL Let's Encrypt ahora? (s/n): " -n 1 -r USE_DOMAIN
+    echo ""
+    PANEL_DOMAIN="_"
+    CERT_PATH="${SSL_DIR}/selfsigned.crt"
+    KEY_PATH="${SSL_DIR}/selfsigned.key"
+
+    if [[ $USE_DOMAIN =~ ^[Ss]$ ]]; then
+        read -p "Ingrese el dominio del panel (ej: panel.tudominio.com): " PANEL_DOMAIN
+        read -p "Ingrese su email para Let's Encrypt: " LE_EMAIL
+        if setup_letsencrypt "$PANEL_DOMAIN" "$LE_EMAIL"; then
+            CERT_PATH="/etc/letsencrypt/live/${PANEL_DOMAIN}/fullchain.pem"
+            KEY_PATH="/etc/letsencrypt/live/${PANEL_DOMAIN}/privkey.pem"
+        fi
+    fi
+
+    write_panel_vhost "$PANEL_DOMAIN" "$CERT_PATH" "$KEY_PATH"
+    write_hls_vhost
+    configure_firewall
+    deploy_panel
+    setup_supervisor
+    install_tuistream_cmd
+    setup_logrotate
+
+    # Arrancar NGINX
+    nginx -t && systemctl start nginx && systemctl reload nginx
+
+    ADMIN_PASS=$(cat "${SSL_DIR}/.admin_pass" 2>/dev/null || echo "Ver ${SSL_DIR}/.admin_pass")
+
+    echo ""
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}       ✓ TUISTREAM INSTALADO CORRECTAMENTE       ${NC}"
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "  ${WHITE}Panel Admin:${NC}   https://<TU-IP>:${PANEL_PORT}"
+    [ "$PANEL_DOMAIN" != "_" ] && echo -e "  ${WHITE}Dominio:${NC}       https://${PANEL_DOMAIN}:${PANEL_PORT}"
+    echo ""
+    echo -e "  ${WHITE}Admin Email:${NC}   admin@tuistream.local"
+    echo -e "  ${WHITE}Admin Pass:${NC}    ${YELLOW}${ADMIN_PASS}${NC}"
+    echo ""
+    echo -e "  ${CYAN}RTMP Ingest:${NC}   rtmp://<IP>:1935/live/<stream-key>"
+    echo -e "  ${CYAN}HLS Play:${NC}      http://<IP>:8088/hls/live/<stream-key>.m3u8"
+    echo ""
+    echo -e "  ${WHITE}Gestión:${NC}       tuistream status | tuistream restart | tuistream logs"
+    echo -e "  ${WHITE}Actualizar:${NC}    tuistream update"
+    echo -e "  ${WHITE}Desinstalar:${NC}   ./install.bin uninstall"
+    echo ""
+    echo -e "  ${YELLOW}NOTE: Login al panel e inserta tu License Key para activar.${NC}"
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
+}
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  ACTION: UPDATE
+# ═════════════════════════════════════════════════════════════════════════════
+do_update() {
+    print_banner
+    require_root update
+
+    echo -e "${CYAN}Actualizando TuiStream a la última versión...${NC}"
+    echo ""
+
+    [ -d "$PANEL_DIR" ] || die "TuiStream no está instalado en ${PANEL_DIR}. Ejecuta ./install.bin start primero."
+
+    step "[1/5] Descargando última versión"
+    if curl -fsSL --connect-timeout 30 "$RELEASE_URL" -o /tmp/tuistream-update.tar.gz; then
+        tar xzf /tmp/tuistream-update.tar.gz -C /tmp/tuistream-new --strip-components=1 2>/dev/null \
+            || mkdir -p /tmp/tuistream-new && tar xzf /tmp/tuistream-update.tar.gz -C /tmp/tuistream-new
+        # Preservar .env y storage
+        cp "${PANEL_DIR}/.env" /tmp/tuistream-new/.env 2>/dev/null || true
+        rsync -a --exclude='.env' --exclude='storage/' /tmp/tuistream-new/ "$PANEL_DIR/"
+        rm -rf /tmp/tuistream-update.tar.gz /tmp/tuistream-new
+        success "Código actualizado."
+    else
+        warn "No se pudo descargar actualización remota. Actualizando solo dependencias..."
+    fi
+
+    step "[2/5] Actualizando dependencias PHP"
+    cd "$PANEL_DIR"
+    composer install --no-dev --optimize-autoloader --no-interaction 2>&1 | tail -3
+
+    step "[3/5] Ejecutando migraciones de base de datos"
+    php artisan migrate --force
+    success "Migraciones ejecutadas."
+
+    step "[4/5] Recompilando Frontend"
+    npm ci --silent && npm run build --silent
+    success "Frontend compilado."
+
+    step "[5/5] Recachando configuración y reiniciando servicios"
+    php artisan config:cache
+    php artisan route:cache
+    php artisan view:cache
+    php artisan queue:restart
+
+    # Recargar NGINX sin corte de servicio
+    nginx -t && nginx -s reload
+
+    supervisorctl restart all 2>/dev/null || true
+
+    echo ""
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}       ✓ TUISTREAM ACTUALIZADO CORRECTAMENTE       ${NC}"
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
+}
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  ACTION: UNINSTALL
+# ═════════════════════════════════════════════════════════════════════════════
+do_uninstall() {
+    print_banner
+    require_root uninstall
+
+    echo -e "${RED}═══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${RED}         ¡ADVERTENCIA! DESINSTALACIÓN TOTAL DE TUISTREAM      ${NC}"
+    echo -e "${RED}═══════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "${YELLOW}Esta acción eliminará PERMANENTEMENTE:${NC}"
+    echo "  • Panel TuiStream (${PANEL_DIR})"
+    echo "  • Base de datos PostgreSQL: tuistream"
+    echo "  • Configuraciones NGINX de TuiStream"
+    echo "  • Todos los contenedores Docker de estaciones"
+    echo "  • Archivos HLS/DASH (/var/hls, /var/dash)"
+    echo "  • Workers de supervisor"
+    echo "  • Logs (${LOG_DIR})"
+    echo ""
+    echo -e "${RED}¡ESTA ACCIÓN ES IRREVERSIBLE!${NC}"
+    echo ""
+    read -p "¿Confirmas la desinstalación completa? Escribe 'ELIMINAR' para confirmar: " CONFIRM
+    [ "$CONFIRM" = "ELIMINAR" ] || { info "Desinstalación cancelada."; exit 0; }
+
+    step "[1/6] Deteniendo y eliminando contenedores Docker de estaciones"
+    for dir in "${STATIONS_DIR}"/*/; do
+        if [ -f "${dir}/docker-compose.yml" ]; then
+            docker compose -f "${dir}/docker-compose.yml" down -v 2>/dev/null || true
+        fi
+    done
+    success "Contenedores de estaciones eliminados."
+
+    step "[2/6] Deteniendo workers de Supervisor"
+    supervisorctl stop all 2>/dev/null || true
+    rm -f /etc/supervisor/conf.d/tuistream.conf
+    supervisorctl reread 2>/dev/null || true
+    supervisorctl update 2>/dev/null || true
+    success "Workers detenidos."
+
+    step "[3/6] Eliminando base de datos PostgreSQL"
+    su -c "psql -c \"DROP DATABASE IF EXISTS tuistream;\"" postgres 2>/dev/null || true
+    su -c "psql -c \"DROP USER IF EXISTS tuistream;\"" postgres 2>/dev/null || true
+    success "Base de datos eliminada."
+
+    step "[4/6] Limpiando configuración NGINX"
+    rm -f /etc/nginx/sites-enabled/tuistream-panel
+    rm -f /etc/nginx/sites-available/tuistream-panel
+    rm -f /etc/nginx/conf.d/tuistream-hls.conf
+    # Restaurar nginx básico si existe
+    nginx -t 2>/dev/null && nginx -s reload 2>/dev/null || systemctl stop nginx 2>/dev/null || true
+    success "Configuración NGINX limpiada."
+
+    step "[5/6] Eliminando archivos del panel y streams"
+    rm -rf "$PANEL_DIR"
+    rm -rf "$LOG_DIR"
+    rm -rf /var/hls /var/dash
+    rm -f /usr/local/bin/tuistream
+    rm -f /etc/logrotate.d/tuistream
+    success "Archivos del sistema eliminados."
+
+    step "[6/6] Limpiando reglas de Firewall"
+    if command -v ufw &>/dev/null; then
+        ufw delete allow "${PANEL_PORT}/tcp" 2>/dev/null || true
+        ufw delete allow "1935/tcp" 2>/dev/null || true
+        ufw delete allow "${STREAM_PORT_RANGE_START}:${STREAM_PORT_RANGE_END}/tcp" 2>/dev/null || true
+    elif command -v firewall-cmd &>/dev/null; then
+        firewall-cmd --permanent --remove-port="${PANEL_PORT}/tcp" 2>/dev/null || true
+        firewall-cmd --permanent --remove-port="1935/tcp" 2>/dev/null || true
+        firewall-cmd --reload 2>/dev/null || true
+    fi
+    success "Firewall limpiado."
+
+    echo ""
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}     ✓ TUISTREAM DESINSTALADO COMPLETAMENTE     ${NC}"
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
+}
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  MAIN ENTRYPOINT
+# ═════════════════════════════════════════════════════════════════════════════
+ACTION="${1:-help}"
+
+case "$ACTION" in
+    start|install)
+        do_install
+        ;;
+    update|upgrade)
+        do_update
+        ;;
+    uninstall|remove)
+        do_uninstall
+        ;;
+    help|--help|-h)
+        print_banner
+        echo "Uso:"
+        echo "  ./install.bin start      → Instalar TuiStream"
+        echo "  ./install.bin update     → Actualizar TuiStream"
+        echo "  ./install.bin uninstall  → Desinstalar TuiStream"
+        echo ""
+        echo "Instalación rápida vía SSH:"
+        echo "  curl -L https://recursos.tuistream.com/install.bin > install.bin && chmod +x install.bin"
+        echo "  ./install.bin start"
+        echo ""
+        echo "Actualizar:"
+        echo "  tuistream update"
+        echo ""
+        echo "Desinstalar:"
+        echo "  curl -L https://recursos.tuistream.com/install.bin > install.bin && chmod +x install.bin"
+        echo "  ./install.bin uninstall"
+        ;;
+    *)
+        error "Acción desconocida: '${ACTION}'"
+        echo "Usa: ./install.bin [start|update|uninstall]"
+        exit 1
+        ;;
+esac

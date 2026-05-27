@@ -6,6 +6,12 @@
 
         <title inertia>{{ config('app.name', 'TuiStream') }}</title>
 
+        <!-- Favicon -->
+        <link rel="icon" href="{{ \App\Models\Setting::get('app_favicon') ?: '/favicon.ico' }}" type="image/x-icon">
+
+        <!-- CSRF Token for fetch() API calls -->
+        <meta name="csrf-token" content="{{ csrf_token() }}">
+
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,10 +19,10 @@
 
         <!-- Styles / Scripts -->
         @viteReactRefresh
-        @vite(['resources/js/app.tsx'])
+        @vite(['resources/css/app.css', 'resources/js/app.tsx'])
         @inertiaHead
     </head>
-    <body className="font-sans antialiased bg-slate-950 text-slate-100 selection:bg-indigo-500 selection:text-white">
+    <body class="font-sans antialiased bg-slate-950 text-slate-100 selection:bg-indigo-500 selection:text-white">
         @inertia
     </body>
 </html>

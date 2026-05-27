@@ -7,13 +7,20 @@
     },
     "dependencies": {
         "@inertiajs/react": "^2.0.0",
+        "@videojs/http-streaming": "^3.17.4",
+        "@videojs/react": "^10.0.0-beta.24",
         "clsx": "^2.1.1",
         "lucide-react": "^0.475.0",
+        "plyr": "^3.8.4",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
-        "tailwind-merge": "^3.0.1"
+        "react-is": "^19.2.6",
+        "recharts": "^3.8.1",
+        "tailwind-merge": "^3.0.1",
+        "video.js": "^8.23.7"
     },
     "devDependencies": {
+        "@tailwindcss/vite": "^4.3.0",
         "@types/node": "^22.13.4",
         "@types/react": "^19.0.8",
         "@types/react-dom": "^19.0.3",

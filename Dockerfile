@@ -27,6 +27,9 @@ RUN chmod +x /usr/local/bin/install-php-extensions && \
     redis \
     swoole
 
+# Copiar configuración de límites de subida de PHP (3GB)
+COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
+
 # Descargar e instalar Composer
 COPY --from=composer:2.8 /usr/bin/composer /usr/bin/composer
 
@@ -37,4 +40,4 @@ WORKDIR /var/www
 EXPOSE 8000 8080
 
 # Comando por defecto para iniciar (será sobreescrito en docker-compose para desarrollo)
-CMD ["php", "artisan", "octane:start", "--host=0.0.0.0", "--port=8000"]
+CMD ["php", "-S", "0.0.0.0:8000", "-t", "public"]

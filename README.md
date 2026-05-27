@@ -1,58 +1,171 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# TuiStream — Streaming Hosting Platform
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+**Modern alternative to MediaCP, AzuraCast & CentovaCast**
+by [Hostuis Group LLC](https://hostuis.com)
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
-
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
-
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## 🚀 Quick Install via SSH
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+curl -L https://recursos.tuistream.com/install.bin > install.bin && chmod +x install.bin
+./install.bin start
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+> **NOTE:** After installation is completed, login to your Admin Panel and insert your License Key.
 
-## Contributing
+---
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## 📋 System Requirements
 
-## Code of Conduct
+### CPU
+- Minimum **1 Core CPU** (2+ recommended for transcoding)
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+### Memory
+- Minimum **2 GB RAM** (4+ GB recommended)
 
-## Security Vulnerabilities
+### Storage
+- HDD / NVMe / SSD — as per your streaming needs
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+### Supported Operating Systems
+| OS | Version |
+|---|---|
+| AlmaLinux | 9, 10 |
+| Ubuntu | 22.04 LTS, 24.04 LTS |
+| Debian | 11 (Bullseye), 12 (Bookworm) |
 
-## License
+---
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## 🔥 Network & Firewall
+
+The following ports must be available on your VPS/Dedicated Server:
+
+| Port | Protocol | Purpose |
+|---|---|---|
+| `22` | TCP | SSH Access |
+| `21` | TCP | FTP |
+| `80` | TCP | HTTP / Let's Encrypt ACME |
+| `443` | TCP | HTTPS |
+| `2020` | TCP | TuiStream Admin Panel (HTTPS) |
+| `1935` | TCP | Global RTMP Ingest |
+| `999–65000` | TCP | Streaming Services Range |
+
+---
+
+## 📦 What Gets Installed
+
+### Video Streaming (Native — No Docker)
+- **NGINX** compiled from source with the official **nginx-rtmp-module**
+- **FFmpeg** for transcoding and TV Station loops
+- **HLS** (HTTP Live Streaming) delivery at `/var/hls`
+- **DASH** (Dynamic Adaptive Streaming) delivery at `/var/dash`
+
+### Audio Streaming (Docker-isolated)
+- **Icecast KH** — MP3, AAC, OGG
+- **SHOUTcast 2** — MP3, AAC with SSL
+- **Liquidsoap** — AutoDJ engine
+
+### Platform Stack
+- **PHP 8.4** with FPM
+- **PostgreSQL 17** — main database
+- **Redis 7** — cache, sessions, queues
+- **Supervisor** — process management
+- **Node.js 22** — frontend build
+
+---
+
+## ⚙️ Management Commands
+
+After installation, use the `tuistream` command from anywhere:
+
+```bash
+tuistream start          # Start all services
+tuistream stop           # Stop workers
+tuistream restart        # Restart all services
+tuistream status         # Show system status
+tuistream update         # Update TuiStream
+tuistream nginx-test     # Test NGINX config
+tuistream nginx-reload   # Reload NGINX without downtime
+tuistream logs horizon   # View Horizon logs
+tuistream artisan ...    # Run any artisan command
+```
+
+---
+
+## 🔄 How to Upgrade
+
+```bash
+tuistream update
+```
+
+Or manually:
+```bash
+curl -L https://recursos.tuistream.com/install.bin > install.bin && chmod +x install.bin
+./install.bin update
+```
+
+---
+
+## 🗑️ How to Uninstall
+
+```bash
+curl -L https://recursos.tuistream.com/install.bin > install.bin && chmod +x install.bin
+./install.bin uninstall
+```
+
+> ⚠️ This action is **irreversible** and will delete all stations, data, and configurations.
+
+---
+
+## 📡 Video Streaming — NGINX RTMP
+
+TuiStream installs **Free NGINX Video Server** with the official **nginx-rtmp-module**, providing:
+
+- **RTMP** ingest from OBS, FFmpeg, any encoder
+- **HLS** playback (`.m3u8`) — compatible with all players
+- **DASH** playback (`.mpd`) — adaptive bitrate
+- **Live Streaming** — real-time broadcast
+- **Stream Relay** — relay/proxy external streams
+- **TV Station** — 24/7 playlist loop via FFmpeg
+
+### Stream URLs per Station
+```
+RTMP Ingest : rtmp://<SERVER_IP>:<RTMP_PORT>/live/<stream-key>
+HLS Play    : http://<SERVER_IP>:<PORT>/hls/live/<stream-key>.m3u8
+DASH Play   : http://<SERVER_IP>:<PORT>/dash/live/<stream-key>.mpd
+Stats       : http://<SERVER_IP>:<PORT>/stat
+```
+
+### Re-streaming Targets
+| Platform | Supported |
+|---|---|
+| YouTube | ✅ |
+| Facebook | ✅ |
+| Twitch | ✅ |
+| Kick | ✅ |
+| TikTok | ✅ |
+| Instagram | ✅ |
+| Telegram | ✅ |
+| VK | ✅ |
+| Custom RTMP | ✅ |
+| Icecast | ✅ |
+
+---
+
+## 🔐 Admin Panel Access
+
+After installation:
+
+```
+URL:      https://<YOUR-SERVER-IP>:2020
+Email:    admin@tuistream.local
+Password: (shown at end of installation)
+```
+
+---
+
+## 🏢 About
+
+**TuiStream** is developed and maintained by **[Hostuis Group LLC](https://hostuis.com)**
+
+© 2026 TuiStream. Todos los derechos reservados. por Hostuis Group LLC.

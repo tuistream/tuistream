@@ -11,3 +11,325 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
+/* ============================================================
+   MODO CLARO / LIGHT MODE — Covertura completa del sistema
+   ============================================================ */
+
+html.light,
+html.light body {
+    background-color: #f8fafc !important;
+    color: #0f172a !important;
+}
+
+/* ── Fondos oscuros → claros ── */
+html.light .bg-slate-950,
+html.light .bg-slate-950\/70,
+html.light .bg-slate-950\/80,
+html.light .bg-slate-950\/50,
+html.light .bg-slate-950\/20,
+html.light .bg-slate-950\/10 {
+    background-color: #f8fafc !important;
+}
+
+html.light .bg-slate-900,
+html.light .bg-slate-900\/10,
+html.light .bg-slate-900\/20,
+html.light .bg-slate-900\/30,
+html.light .bg-slate-900\/40,
+html.light .bg-slate-900\/50,
+html.light .bg-slate-900\/60,
+html.light .bg-slate-900\/80 {
+    background-color: #ffffff !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+}
+
+html.light .bg-slate-800,
+html.light .bg-slate-800\/50 {
+    background-color: #f1f5f9 !important;
+}
+
+html.light .bg-slate-700 {
+    background-color: #e2e8f0 !important;
+}
+
+html.light .bg-black,
+html.light .bg-black\/50,
+html.light .bg-black\/80 {
+    background-color: #0f172a !important;
+}
+
+html.light .bg-gray-900 {
+    background-color: #f1f5f9 !important;
+}
+
+/* ── Textos blancos/grises oscuros → oscuros claros ── */
+html.light .text-white,
+html.light .text-slate-100,
+html.light .text-slate-200 {
+    color: #0f172a !important;
+}
+
+html.light .text-slate-300,
+html.light .text-slate-350,
+html.light .text-slate-400 {
+    color: #334155 !important;
+}
+
+html.light .text-slate-450 {
+    color: #475569 !important;
+}
+
+html.light .text-slate-500 {
+    color: #64748b !important;
+}
+
+html.light .text-slate-550 {
+    color: #64748b !important;
+}
+
+html.light .text-slate-600 {
+    color: #94a3b8 !important;
+}
+
+html.light .text-slate-650 {
+    color: #64748b !important;
+}
+
+html.light .text-gray-400 {
+    color: #475569 !important;
+}
+
+html.light .text-gray-500 {
+    color: #64748b !important;
+}
+
+/* ── Bordes oscuros → claros ── */
+html.light .border-slate-900,
+html.light .border-slate-900\/20,
+html.light .border-slate-900\/30,
+html.light .border-slate-900\/40,
+html.light .border-slate-900\/50,
+html.light .border-slate-900\/60,
+html.light .border-slate-900\/80,
+html.light .border-slate-800,
+html.light .border-slate-800\/50 {
+    border-color: #e2e8f0 !important;
+}
+
+html.light .border-slate-700 {
+    border-color: #cbd5e1 !important;
+}
+
+/* ── Inputs, selects, textareas ── */
+html.light input,
+html.light select,
+html.light textarea {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #cbd5e1 !important;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+    color: #94a3b8 !important;
+}
+
+html.light input:focus,
+html.light select:focus,
+html.light textarea:focus {
+    border-color: #6366f1 !important;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15) !important;
+}
+
+html.light .placeholder-slate-500::placeholder,
+html.light .placeholder-slate-650::placeholder {
+    color: #94a3b8 !important;
+}
+
+/* ── Hover states ── */
+html.light .hover\:bg-slate-900:hover,
+html.light .hover\:bg-slate-900\/10:hover,
+html.light .hover\:bg-slate-900\/20:hover,
+html.light .hover\:bg-slate-900\/30:hover,
+html.light .hover\:bg-slate-900\/50:hover,
+html.light .hover\:bg-slate-900\/80:hover {
+    background-color: #f1f5f9 !important;
+}
+
+html.light .hover\:bg-slate-800:hover,
+html.light .hover\:bg-slate-800\/50:hover {
+    background-color: #e2e8f0 !important;
+}
+
+html.light .hover\:border-slate-800:hover {
+    border-color: #cbd5e1 !important;
+}
+
+html.light .hover\:text-white:hover,
+html.light .hover\:text-slate-300:hover {
+    color: #1e293b !important;
+}
+
+html.light .hover\:bg-gray-800:hover {
+    background-color: #e2e8f0 !important;
+}
+
+/* ── Badges / chips ── */
+html.light .bg-indigo-500\/10 {
+    background-color: #eef2ff !important;
+}
+html.light .bg-indigo-500\/20 {
+    background-color: #e0e7ff !important;
+}
+html.light .bg-pink-500\/10 {
+    background-color: #fdf2f8 !important;
+}
+html.light .bg-pink-500\/20 {
+    background-color: #fce7f3 !important;
+}
+html.light .bg-emerald-500\/10 {
+    background-color: #ecfdf5 !important;
+}
+html.light .bg-emerald-500\/20 {
+    background-color: #d1fae5 !important;
+}
+html.light .bg-amber-500\/10 {
+    background-color: #fffbeb !important;
+}
+html.light .bg-amber-500\/20 {
+    background-color: #fef3c7 !important;
+}
+html.light .bg-red-500\/10 {
+    background-color: #fef2f2 !important;
+}
+html.light .bg-red-500\/20 {
+    background-color: #fee2e2 !important;
+}
+
+/* ── Icon/text colors accent (keep vibrant) ── */
+html.light .text-indigo-400 {
+    color: #4f46e5 !important;
+}
+html.light .text-pink-400 {
+    color: #db2777 !important;
+}
+html.light .text-emerald-400 {
+    color: #059669 !important;
+}
+html.light .text-amber-400 {
+    color: #d97706 !important;
+}
+
+/* ── Accent borders ── */
+html.light .border-indigo-500\/20 {
+    border-color: #c7d2fe !important;
+}
+html.light .border-indigo-500\/30 {
+    border-color: #a5b4fc !important;
+}
+html.light .border-pink-500\/20 {
+    border-color: #fbcfe8 !important;
+}
+html.light .border-pink-500\/30 {
+    border-color: #f9a8d4 !important;
+}
+html.light .border-emerald-500\/20 {
+    border-color: #a7f3d0 !important;
+}
+html.light .border-amber-500\/20 {
+    border-color: #fde68a !important;
+}
+
+/* ── Gradient backgrounds ── */
+html.light .from-slate-950,
+html.light .from-slate-900 {
+    --tw-gradient-from: #f8fafc !important;
+}
+html.light .to-slate-950,
+html.light .to-slate-900 {
+    --tw-gradient-to: #ffffff !important;
+}
+
+/* ── Dividers ── */
+html.light .divide-slate-900 > :not([hidden]) ~ :not([hidden]),
+html.light .divide-slate-800 > :not([hidden]) ~ :not([hidden]) {
+    border-color: #e2e8f0 !important;
+}
+
+/* ── Scrollbars ── */
+html.light ::-webkit-scrollbar-track {
+    background: #f1f5f9 !important;
+}
+html.light ::-webkit-scrollbar-thumb {
+    background: #cbd5e1 !important;
+    border-radius: 8px;
+}
+html.light ::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8 !important;
+}
+
+/* ── Misc utility classes ── */
+html.light .shadow-xl {
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06) !important;
+}
+html.light .shadow-lg {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04) !important;
+}
+html.light .shadow-md {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+}
+
+html.light .ring-offset-slate-950 {
+    --tw-ring-offset-color: #ffffff !important;
+}
+
+html.light .text-slate-950 {
+    color: #f8fafc !important;
+}
+
+/* ── Toast / Alert components ── */
+html.light .bg-emerald-500\/20 {
+    background-color: #d1fae5 !important;
+}
+html.light .bg-red-500\/20 {
+    background-color: #fee2e2 !important;
+}
+
+/* ── Dropdown / popover menus ── */
+html.light .bg-slate-800\/90 {
+    background-color: #ffffff !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* ── Transitions for smooth theme switch ── */
+html.light *,
+html.light *::before,
+html.light *::after {
+    transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+}
+
+/* ── Focus ring ── */
+html.light .focus\:border-indigo-500\/50:focus,
+html.light .focus\:border-pink-500\/50:focus,
+html.light .focus\:border-indigo-500\/60:focus {
+    border-color: #6366f1 !important;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15) !important;
+}
+
+/* ── Checkbox / Radio ── */
+html.light input[type="checkbox"],
+html.light input[type="radio"] {
+    accent-color: #6366f1 !important;
+}
+
+/* ── Pre / Code blocks ── */
+html.light pre {
+    background-color: #f1f5f9 !important;
+    color: #0f172a !important;
+    border-color: #e2e8f0 !important;
+}
+
+html.light code {
+    color: #0f172a !important;
+}

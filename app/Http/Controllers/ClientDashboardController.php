@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Inertia\Inertia;
 use Modules\Stations\Models\Station;
 use Modules\Streaming\Services\StationOrchestrator;
@@ -18,41 +19,65 @@ class ClientDashboardController extends Controller
     }
 
     /**
-     * Mostrar el dashboard de la emisora del cliente.
+     * Mostrar el dashboard del cliente con TODAS sus estaciones.
      */
     public function index()
     {
         $user = Auth::user();
-        
-        // Obtener la primera estación asociada al usuario
-        $station = Station::where('user_id', $user->id)->first();
 
-        if (!$station) {
-            return Inertia::render('Client/NoStation');
-        }
+        // Obtener todas las estaciones del usuario
+        $stations = Station::where('user_id', $user->id)->latest()->get();
 
-        // Obtener estadísticas de reproducción simuladas
-        $listenersCount = $station->status === 'online' ? rand(10, $station->max_listeners - 10) : 0;
-        $activeSong = $station->status === 'online' ? 'Stereo Love - Edward Maya feat. Vika Jigulina' : 'Estación apagada';
+        $audioStations = $stations->where('type', 'audio')->values();
+        $videoStations = $stations->where('type', 'video')->values();
 
         return Inertia::render('Client/Dashboard', [
-            'station' => [
-                'id' => $station->id,
-                'name' => $station->name,
-                'slug' => $station->slug,
-                'port' => $station->port,
-                'dj_port' => $station->port + 1000,
-                'status' => $station->status,
-                'bitrate' => $station->bitrate,
-                'max_listeners' => $station->max_listeners,
-                'stream_url' => "http://localhost:{$station->port}/radio.mp3",
+            'audioStations' => $audioStations->map(fn($s) => $this->formatStation($s)),
+            'videoStations' => $videoStations->map(fn($s) => $this->formatStation($s)),
+            'stats' => [
+                'total' => $stations->count(),
+                'online' => $stations->where('status', 'online')->count(),
+                'audio_count' => $audioStations->count(),
+                'video_count' => $videoStations->count(),
             ],
-            'now_playing' => [
-                'song' => $activeSong,
-                'listeners' => $listenersCount,
-                'peak_listeners' => $station->status === 'online' ? $station->max_listeners - 5 : 0,
-            ]
         ]);
+    }
+
+    /**
+     * Formatear la data de una estación para el frontend.
+     */
+    protected function formatStation(Station $station): array
+    {
+        $realStats = $this->orchestrator->getRealStats($station);
+        $domain = \App\Models\Setting::get('server_domain', request()->getHost());
+        $port = request()->getPort();
+        $portSuffix = ($port == 80 || $port == 443) ? '' : ":{$port}";
+        $scheme = request()->getScheme();
+
+        return [
+            'id' => $station->id,
+            'name' => $station->name,
+            'slug' => $station->slug,
+            'port' => $station->port,
+            'dj_port' => $station->port + 1000,
+            'status' => $station->status,
+            'bitrate' => $station->bitrate,
+            'max_listeners' => $station->max_listeners,
+            'type' => $station->type,
+            'frontend' => $station->frontend,
+            'stream_key' => $station->stream_key ?? 'live',
+            'stream_url' => $station->type === 'video'
+                ? "{$scheme}://{$domain}:{$station->port}"
+                : "{$scheme}://{$domain}:{$station->port}/radio.mp3",
+            'listeners' => $realStats['listeners'],
+            'now_playing' => $realStats['now_playing'],
+            'service_type' => $station->service_type ?? ($station->type === 'video' ? 'live_streaming' : 'none'),
+            'server_domain' => $domain,
+            'rtmp_domain' => $domain,
+            'dj_password' => $station->admin_password ?? ('dj_' . $station->slug),
+            'storage_used_mb' => round($station->mediaFiles()->sum('size') / 1024 / 1024, 2),
+            'storage_limit_mb' => $station->storage_limit ?? 1024,
+        ];
     }
 
     /**
@@ -92,9 +117,49 @@ class ClientDashboardController extends Controller
         $result = $this->orchestrator->restart($station);
 
         if ($result['success']) {
-            return back()->with('success', 'Servicios de streaming e hilos de AutoDJ reiniciados con éxito.');
+            return back()->with('success', 'Servicios de streaming reiniciados con éxito.');
         }
 
         return back()->with('error', 'Error al reiniciar la emisora: ' . $result['output']);
+    }
+
+    /**
+     * Mostrar perfil de datos personales del cliente.
+     */
+    public function showProfile()
+    {
+        $user = Auth::user();
+        return Inertia::render('Client/Profile', [
+            'client' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+            ],
+        ]);
+    }
+
+    /**
+     * Actualizar datos personales del cliente.
+     */
+    public function updateProfile(Request $request)
+    {
+        $user = Auth::user();
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email,' . $user->id],
+            'password' => ['nullable', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $user->name = $validated['name'];
+        $user->email = $validated['email'];
+
+        if (!empty($validated['password'])) {
+            $user->password = Hash::make($validated['password']);
+        }
+
+        $user->save();
+
+        return back()->with('success', 'Sus datos personales han sido actualizados con éxito.');
     }
 }

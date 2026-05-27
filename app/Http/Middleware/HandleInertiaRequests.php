@@ -47,6 +47,12 @@ class HandleInertiaRequests extends Middleware
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
             ],
+            'app' => [
+                'logo' => \App\Models\Setting::get('app_logo', ''),
+                'favicon' => \App\Models\Setting::get('app_favicon', ''),
+                'name' => \App\Models\Setting::get('app_name', 'TuiStream'),
+            ],
+            'isImpersonating' => (bool) $request->session()->get('impersonate_admin_id'),
         ]);
     }
 }
