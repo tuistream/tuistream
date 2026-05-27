@@ -28,3 +28,4 @@ Thumbs.db
 /storage/tuistream/stations/*
 /public/uploads/*
 /public/D*
+/docker/certs/

@@ -221,17 +221,33 @@ ENVEOF
 
 info "Archivo .env generado"
 
+# Reemplazar placeholder de dominio en configuraciones Nginx
+cmdout "Configurando Nginx con dominio ${DOMAIN}..."
+sed -i "s/__DOMAIN__/${DOMAIN}/g" docker/nginx-proxy/conf.d/default.conf
+info "Nginx configurado con dominio ${DOMAIN}"
+
+# Generar certificado SSL auto-firmado temporal (nginx necesita uno para arrancar)
+# Luego certbot lo reemplazará con Let's Encrypt real
+cmdout "Generando certificado SSL temporal para ${DOMAIN}..."
+mkdir -p docker/certs/www docker/certs/letsencrypt/live/${DOMAIN}
+openssl req -x509 -nodes -days 7 -newkey rsa:2048 \
+    -keyout docker/certs/letsencrypt/live/${DOMAIN}/privkey.pem \
+    -out docker/certs/letsencrypt/live/${DOMAIN}/fullchain.pem \
+    -subj "/CN=${DOMAIN}" 2>/dev/null
+info "Certificado SSL temporal generado (válido 7 días)"
+
 # ── Paso 7: Construir y desplegar contenedores ────────────────────────────────
 step "Paso 7/8: Construyendo y desplegando servicios Docker..."
 cmdout "Esto puede tardar varios minutos..."
 
-docker compose -f docker-compose.prod.yml build --pull 2>&1 | while read line; do
-    echo "    $line"
-done
+docker compose -f docker-compose.prod.yml build --pull 2>&1 || {
+    error "Fallo al construir las imágenes Docker. Revisa los logs arriba."
+}
 
-docker compose -f docker-compose.prod.yml up -d 2>&1 | while read line; do
-    echo "    $line"
-done
+cmdout "Iniciando contenedores..."
+docker compose -f docker-compose.prod.yml up -d 2>&1 || {
+    error "Fallo al iniciar los contenedores Docker. Revisa: docker compose -f ${APP_DIR}/docker-compose.prod.yml logs"
+}
 
 info "Contenedores desplegados"
 
