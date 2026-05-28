@@ -91,6 +91,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/dashboard/station/{station}/playlists/{playlist}/toggle', [ClientStationController::class, 'playlistsToggle'])->name('client.station.playlists.toggle');
     Route::post('/dashboard/station/{station}/playlists/{playlist}/add-media', [ClientStationController::class, 'playlistsAddMedia'])->name('client.station.playlists.add-media');
     Route::post('/dashboard/station/{station}/playlists/{playlist}/remove-media', [ClientStationController::class, 'playlistsRemoveMedia'])->name('client.station.playlists.remove-media');
+    Route::get('/dashboard/station/{station}/playlists/{playlist}/media', [ClientStationController::class, 'playlistsShow'])->name('client.station.playlists.media');
 
     // Jingles CRUD
     Route::get('/dashboard/station/{station}/jingles/list', [ClientStationController::class, 'jinglesList'])->name('client.station.jingles.list');

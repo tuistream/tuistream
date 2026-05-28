@@ -783,6 +783,27 @@ class ClientStationController extends Controller
         return response()->json(['success' => true]);
     }
 
+    public function playlistsShow(Station $station, \Modules\AutoDJ\Models\Playlist $playlist)
+    {
+        $this->ensureOwnership($station);
+        if ($playlist->station_id !== $station->id) abort(403);
+
+        $media = $playlist->mediaFiles()
+            ->select('media_files.id', 'media_files.title', 'media_files.artist', 'media_files.filename', 'media_files.duration')
+            ->get();
+
+        return response()->json([
+            'playlist' => [
+                'id' => $playlist->id,
+                'name' => $playlist->name,
+                'type' => $playlist->type,
+                'is_active' => $playlist->is_active,
+                'play_mode' => $playlist->play_mode,
+                'media_files' => $media,
+            ],
+        ]);
+    }
+
     public function playlistsToggle(Station $station, \Modules\AutoDJ\Models\Playlist $playlist)
     {
         $this->ensureOwnership($station);
