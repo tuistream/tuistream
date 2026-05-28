@@ -734,7 +734,6 @@ class ClientStationController extends Controller
         $this->ensureOwnership($station);
         $playlists = \Modules\AutoDJ\Models\Playlist::where('station_id', $station->id)
             ->withCount('mediaFiles')
-            ->select('id', 'station_id', 'name', 'type', 'is_active', 'play_mode', 'created_at')
             ->latest()
             ->get();
         return response()->json($playlists);
