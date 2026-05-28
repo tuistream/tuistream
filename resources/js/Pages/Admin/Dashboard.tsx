@@ -61,6 +61,7 @@ export default function AdminDashboard() {
 
     const [liveMetrics, setLiveMetrics] = useState(metrics);
     const [diagnostics, setDiagnostics] = useState<DiagnosticsMap>({});
+    const [realListeners, setRealListeners] = useState(0);
 
     useEffect(() => {
         let mounted = true;
@@ -98,7 +99,28 @@ export default function AdminDashboard() {
             }
         };
         fetchDiagnostics();
-        return () => { mounted = false; };
+        const interval = setInterval(fetchDiagnostics, 30000);
+        return () => { mounted = false; clearInterval(interval); };
+    }, []);
+
+    useEffect(() => {
+        let mounted = true;
+        const fetchListeners = async () => {
+            try {
+                const res = await fetch('/admin/real-listeners', {
+                    headers: { 'X-Inertia': 'true', 'Accept': 'application/json' }
+                });
+                if (res.ok && mounted) {
+                    const data = await res.json();
+                    setRealListeners(data.total || 0);
+                }
+            } catch {
+                // mantener valor actual si falla
+            }
+        };
+        fetchListeners();
+        const interval = setInterval(fetchListeners, 10000);
+        return () => { mounted = false; clearInterval(interval); };
     }, []);
 
     const statCards = [
@@ -176,12 +198,12 @@ export default function AdminDashboard() {
                     <div>
                         <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 select-none">
                             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                            Monitor de Rendimiento del Servidor (Tiempo Real)
+                            Monitor de Rendimiento (Tiempo Real)
                         </h2>
-                        <p className="text-[10px] text-slate-500 mt-0.5">Diagnósticos activos del nodo standalone central</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">Métricas del sistema en vivo — CPU, RAM, disco y conexiones activas</p>
                     </div>
                     <span className="px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-[9px] font-mono font-bold text-indigo-400 uppercase select-none">
-                        Nodo Activo
+                        En Vivo
                     </span>
                 </div>
 
@@ -247,7 +269,7 @@ export default function AdminDashboard() {
                             <Wifi className="w-4 h-4 text-emerald-400 animate-pulse shrink-0" />
                         </div>
                         <div className="flex items-baseline gap-1.5 mt-1 select-none">
-                            <span className="text-2xl font-black font-mono text-white">{liveMetrics.listeners || stats.total_listeners || 0}</span>
+                            <span className="text-2xl font-black font-mono text-white">{realListeners}</span>
                             <span className="text-[9px] text-emerald-400 font-bold uppercase font-mono">En Línea</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-[9px] text-slate-500 select-none mt-1">
@@ -309,8 +331,9 @@ export default function AdminDashboard() {
 
             {/* Stats Grid */}
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-                {statCards.map((card) => {
+                {statCards.map((card, idx) => {
                     const Icon = card.icon;
+                    const displayValue = idx === 5 ? realListeners : (card.value ?? 0);
                     return (
                         <div
                             key={card.label}
@@ -320,7 +343,7 @@ export default function AdminDashboard() {
                                 <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider">{card.label}</span>
                                 <Icon className={`w-4.5 h-4.5 ${card.color} opacity-60`} />
                             </div>
-                            <span className={`text-3xl font-extrabold font-mono ${card.color}`}>{card.value}</span>
+                            <span className={`text-3xl font-extrabold font-mono ${card.color}`}>{displayValue}</span>
                         </div>
                     );
                 })}

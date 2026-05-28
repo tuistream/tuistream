@@ -65,6 +65,42 @@ class AdminDashboardController extends Controller
     }
 
     /**
+     * Endpoint JSON para conteo real de oyentes (StationOrchestrator).
+     * Agrega todas las estaciones online con timeout mínimo para no bloquear.
+     */
+    public function realListenersJson()
+    {
+        $stations = Station::where('status', 'online')->get();
+        $total = 0;
+        $details = [];
+
+        foreach ($stations as $station) {
+            try {
+                $stats = $this->orchestrator->getRealStats($station);
+                $listeners = $stats['listeners'] ?? 0;
+                $total += (int) $listeners;
+                $details[] = [
+                    'id' => $station->id,
+                    'name' => $station->name,
+                    'type' => $station->type,
+                    'listeners' => (int) $listeners,
+                ];
+            } catch (\Throwable $e) {
+                $details[] = [
+                    'id' => $station->id,
+                    'name' => $station->name,
+                    'listeners' => 0,
+                ];
+            }
+        }
+
+        return response()->json([
+            'total' => $total,
+            'stations' => $details,
+        ]);
+    }
+
+    /**
      * Diagnóstico de backend de servicios (Nginx RTMP, Icecast 2 KH, SHOUTcast 2, Liquidsoap).
      * Optimizado con cache y bajísimo timeout (100ms) para impedir demoras en carga.
      */
@@ -277,7 +313,15 @@ class AdminDashboardController extends Controller
             }
 
             $onlineStations = Station::where('status', 'online')->get();
-            $listeners = $onlineStations->sum('max_listeners');
+            $listeners = 0;
+            foreach ($onlineStations as $s) {
+                try {
+                    $real = $this->orchestrator->getRealStats($s);
+                    $listeners += (int) ($real['listeners'] ?? 0);
+                } catch (\Throwable $e) {
+                    // ignore offline/unreachable station
+                }
+            }
 
             return [
                 'cpu' => max(1, min(100, $cpu)),

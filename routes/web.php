@@ -124,6 +124,7 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
     Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('admin.dashboard');
     Route::get('/system-metrics', [AdminDashboardController::class, 'systemMetricsJson'])->name('admin.system-metrics');
     Route::get('/diagnostics', [AdminDashboardController::class, 'diagnosticsJson'])->name('admin.diagnostics');
+    Route::get('/real-listeners', [AdminDashboardController::class, 'realListenersJson'])->name('admin.real-listeners');
 
     // Audio Streaming
     Route::get('/audio', [AdminDashboardController::class, 'audioIndex'])->name('admin.audio');
