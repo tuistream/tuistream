@@ -77,6 +77,32 @@ export default function VideoStationGeneral() {
         }
     };
 
+    // Dynamic chart data based on real listeners
+    const [chartData, setChartData] = useState<{ time: string; connections: number }[]>(
+        Array.from({ length: 12 }, (_, i) => ({ time: `${String(i * 2).padStart(2, '0')}:00`, connections: 0 }))
+    );
+    
+    useEffect(() => {
+        fetch(`/admin/real-listeners`, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.stations) return;
+                const st = data.stations.find((s: any) => s.port === station.port || s.slug === station.slug);
+                if (st) {
+                    setChartData(prev => {
+                        const now = new Date();
+                        const hour = String(now.getHours()).padStart(2, '0');
+                        const min = now.getMinutes();
+                        const label = `${hour}:${String(Math.floor(min / 10) * 10).padStart(2, '0')}`;
+                        const newEntry = { time: label, connections: st.listeners || 0 };
+                        const updated = [...prev.slice(1), newEntry];
+                        return updated;
+                    });
+                }
+            })
+            .catch(() => {});
+    }, []);
+
     const storagePercent = station.storage_limit_mb > 0
         ? Math.round((station.storage_used_mb / station.storage_limit_mb) * 100)
         : 0;
