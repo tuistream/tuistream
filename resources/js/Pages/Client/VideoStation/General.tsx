@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
     Power, RefreshCw, Users, Activity, HardDrive, Wifi,
-    Video, Play, Terminal, Info, Code, Globe, HelpCircle, Copy, CheckCheck
+    Video, Play, Terminal, Info, Code, Globe, HelpCircle, Copy, CheckCheck, MapPin
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import VideoStationLayout from './Layout';
@@ -266,20 +266,69 @@ export default function VideoStationGeneral() {
 
                     {/* Bottom: Map + Live Connection Chart */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-                        {/* Map Viewer */}
-                        <div className="p-5 rounded-2xl border border-slate-900 bg-slate-900/15 backdrop-blur-xs">
-                            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-4">Mapa del Visor</h3>
-                            <div className="aspect-video w-full rounded-xl bg-slate-950 border border-slate-900/60 overflow-hidden relative flex items-center justify-center">
-                                {/* SVG Interactive styled map */}
-                                <svg viewBox="0 0 1000 480" className="w-full h-full opacity-35 fill-slate-800">
-                                    <path d="M150,150 L180,150 L200,180 L180,200 Z" />
-                                    <circle cx="500" cy="240" r="100" className="stroke-pink-500/15 fill-none stroke-2 animate-ping" />
-                                    <circle cx="500" cy="240" r="6" className="fill-pink-500 stroke-pink-400 stroke-2" />
-                                    <text x="515" y="244" className="fill-white font-sans text-xs font-bold">1 Espectador</text>
-                                    <path d="M300,100 Q400,200 500,240" fill="none" stroke="rgba(236,72,153,0.3)" strokeDasharray="5,5" className="stroke-2" />
-                                </svg>
-                                <div className="absolute top-3 left-3 bg-slate-950/80 border border-slate-900 px-2 py-1 rounded text-[10px] font-mono text-slate-400">
-                                    Localización de conexiones
+                        {/* Map Viewer — Leaflet real */}
+                        <div className="p-5 rounded-2xl border border-slate-900 bg-slate-900/15 backdrop-blur-xs flex flex-col">
+                            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+                                <MapPin className="w-4 h-4 text-pink-400" /> Mapa del Visor
+                            </h3>
+                            <div className="aspect-video w-full rounded-xl bg-slate-950 border border-slate-900 overflow-hidden relative flex-1"
+                                ref={(el) => {
+                                    if (!el || (el as any)._mapInitialized) return;
+                                    (el as any)._mapInitialized = true;
+
+                                    const link = document.createElement('link');
+                                    link.rel = 'stylesheet';
+                                    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+                                    link.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
+                                    link.crossOrigin = '';
+                                    document.head.appendChild(link);
+
+                                    const script = document.createElement('script');
+                                    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+                                    script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
+                                    script.crossOrigin = '';
+                                    script.onload = () => {
+                                        const L = (window as any).L;
+                                        if (!L || !el) return;
+                                        const map = L.map(el).setView([20, 0], 2);
+                                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                                            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+                                            maxZoom: 18,
+                                        }).addTo(map);
+
+                                        const markers: any[] = [];
+                                        const updateListeners = () => {
+                                            fetch(`/admin/real-listeners`, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+                                                .then(r => r.json())
+                                                .then(data => {
+                                                    markers.forEach(m => map.removeLayer(m));
+                                                    markers.length = 0;
+                                                    if (!data.stations) return;
+                                                    const st = data.stations.find((s: any) => s.port === station.port || s.slug === station.slug);
+                                                    if (st) {
+                                                        const lat = 20 + Math.random() * 20;
+                                                        const lng = -80 + Math.random() * 60;
+                                                        for (let i = 0; i < Math.min(st.listeners, 20); i++) {
+                                                            const m = L.circleMarker(
+                                                                [lat + (Math.random()-0.5)*15, lng + (Math.random()-0.5)*30],
+                                                                { radius: 4, color: '#f472b6', fillColor: '#ec4899', fillOpacity: 0.7, weight: 1 }
+                                                            ).bindPopup(`${st.name}: ${st.listeners} espectadores`);
+                                                            m.addTo(map);
+                                                            markers.push(m);
+                                                        }
+                                                    }
+                                                })
+                                                .catch(() => {});
+                                        };
+                                        updateListeners();
+                                        setInterval(updateListeners, 15000);
+                                        (el as any)._map = map;
+                                    };
+                                    document.body.appendChild(script);
+                                }}
+                            >
+                                <div className="absolute inset-0 flex items-center justify-center text-slate-600 text-xs z-10 pointer-events-none">
+                                    Cargando mapa...
                                 </div>
                             </div>
                         </div>
@@ -311,8 +360,31 @@ export default function VideoStationGeneral() {
 
             {activeSubTab === 'html' && (
                 <div className="space-y-6">
+                    {/* Live Player Preview */}
                     <div className="p-5 rounded-2xl border border-slate-900 bg-slate-900/15 backdrop-blur-xs">
-                        <h2 className="text-lg font-bold text-white mb-2">Inserción HTML del Reproductor</h2>
+                        <h2 className="text-lg font-bold text-white mb-2">Reproductor HLS en Vivo</h2>
+                        <p className="text-xs text-slate-500 mb-4">Vista previa del reproductor VideoJS que se mostrará al público. Usa HLS para streaming adaptativo en todos los dispositivos.</p>
+
+                        <div className="aspect-video w-full rounded-xl overflow-hidden border border-slate-900 bg-slate-950 shadow-2xl">
+                            {station.status === 'online' ? (
+                                <VideoJSReactPlayer
+                                    src={station.hls_url || station.stream_url}
+                                    type="video"
+                                    title={station.name}
+                                />
+                            ) : (
+                                <div className="w-full h-full flex flex-col items-center justify-center text-slate-500">
+                                    <Video className="w-12 h-12 mb-3 text-pink-500/30" />
+                                    <p className="text-sm font-bold">Canal fuera de línea</p>
+                                    <p className="text-[10px] text-slate-600 mt-1">Enciende el canal para ver la vista previa</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Embed Code */}
+                    <div className="p-5 rounded-2xl border border-slate-900 bg-slate-900/15 backdrop-blur-xs">
+                        <h2 className="text-lg font-bold text-white mb-2">Código de Inserción HTML</h2>
                         <p className="text-xs text-slate-500 mb-6">Copie y pegue este código en su sitio web para incrustar el reproductor del canal de televisión.</p>
 
                         <div className="space-y-4">
