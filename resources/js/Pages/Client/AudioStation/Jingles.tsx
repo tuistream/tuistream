@@ -189,9 +189,10 @@ export default function AudioStationJingles() {
                                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500 text-slate-200" placeholder="Identificación de emisora" />
                             </div>
                             <div>
-                                <label className="text-[10px] text-slate-500 uppercase block mb-1.5">Archivo (MP3, WAV, OGG)</label>
+                                <label className="text-[10px] text-slate-500 uppercase block mb-1.5">Archivo (MP3, WAV, OGG, FLAC)</label>
                                 <input type="file" ref={fileRef} accept=".mp3,.wav,.ogg,.flac" required
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none text-slate-200 file:hidden" />
+                                    className="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-500/10 file:text-indigo-400 hover:file:bg-indigo-500/20 file:cursor-pointer cursor-pointer" />
+                                <p className="text-[9px] text-slate-600 mt-1">Formatos aceptados: MP3, WAV, OGG, FLAC — Máx. 100 MB</p>
                             </div>
                             <div className="flex gap-2 pt-2">
                                 <button type="button" onClick={() => setShowUpload(false)} className="flex-1 px-4 py-2.5 bg-slate-800 border border-slate-700 text-slate-400 text-xs font-bold rounded-xl hover:text-white transition-all">Cancelar</button>

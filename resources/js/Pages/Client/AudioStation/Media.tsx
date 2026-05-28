@@ -145,15 +145,20 @@ export default function AudioStationMedia() {
     const handleAddToPlaylist = async () => {
         if (!selectedPlaylist || selectedFiles.length === 0) return;
         try {
-            await fetch(`/dashboard/station/${station.id}/playlists/${selectedPlaylist}/add-media`, {
+            const r = await fetch(`/dashboard/station/${station.id}/playlists/${selectedPlaylist}/add-media`, {
                 method: 'POST',
                 headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ media_ids: selectedFiles }),
             });
+            if (!r.ok) throw new Error('Error');
+            const data = await r.json();
+            setMessage({ type: 'success', text: `${data.added || selectedFiles.length} archivo(s) agregados a la playlist.` });
             setSelectedFiles([]);
             setSelectedPlaylist(null);
             setShowAddToPlaylist(false);
-        } catch { /* handle error */ }
+        } catch {
+            setMessage({ type: 'error', text: 'Error al agregar archivos a la playlist.' });
+        }
     };
 
     return (
@@ -168,6 +173,12 @@ export default function AudioStationMedia() {
             {flash?.error && (
                 <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl text-sm flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-red-400" /> {flash.error}
+                </div>
+            )}
+
+            {message && (
+                <div className={`mb-6 p-4 rounded-xl text-sm flex items-center gap-2 ${message.type === 'success' ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
+                    <span className={`w-2 h-2 rounded-full ${message.type === 'success' ? 'bg-emerald-400' : 'bg-red-400'}`} /> {message.text}
                 </div>
             )}
 

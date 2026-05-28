@@ -36,6 +36,8 @@ export default function AudioStationPlaylists() {
     const [loading, setLoading] = useState(true);
     const [showCreate, setShowCreate] = useState(false);
     const [form, setForm] = useState({ name: '', type: 'standard', play_mode: 'sequential' });
+    const [error, setError] = useState<string | null>(null);
+    const [feedback, setFeedback] = useState<{ type: string; text: string } | null>(null);
 
     const apiBase = `/dashboard/station/${station.id}/playlists`;
 
@@ -51,35 +53,55 @@ export default function AudioStationPlaylists() {
 
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
+        setError(null);
+        setFeedback(null);
         try {
             const res = await fetch(`${apiBase}/store`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': getCsrfToken() },
                 body: JSON.stringify(form),
             });
-            if (res.ok) { setShowCreate(false); setForm({ name: '', type: 'standard', play_mode: 'sequential' }); fetchPlaylists(); }
-        } catch { /* handle error */ }
+            if (res.ok) {
+                const data = await res.json();
+                setFeedback({ type: 'success', text: `Playlist "${form.name}" creada correctamente.` });
+                setShowCreate(false);
+                setForm({ name: '', type: 'standard', play_mode: 'sequential' });
+                fetchPlaylists();
+            } else {
+                const err = await res.json();
+                setError(err.message || Object.values(err.errors || {}).flat().join(', ') || 'Error al crear playlist');
+            }
+        } catch {
+            setError('Error de red al crear playlist');
+        }
     };
 
     const handleToggle = async (pl: PlaylistData) => {
+        setFeedback(null);
         try {
-            await fetch(`${apiBase}/${pl.id}/toggle`, {
+            const res = await fetch(`${apiBase}/${pl.id}/toggle`, {
                 method: 'POST',
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': getCsrfToken() },
             });
-            fetchPlaylists();
-        } catch { /* handle error */}
+            if (res.ok) {
+                fetchPlaylists();
+                const data = await res.json();
+                setFeedback({ type: 'success', text: `Playlist "${pl.name}" ${data.is_active ? 'activada' : 'desactivada'}.` });
+            }
+        } catch { setFeedback({ type: 'error', text: 'Error al cambiar estado' }); }
     };
 
     const handleDelete = async (pl: PlaylistData) => {
         if (!confirm(`¿Eliminar la playlist "${pl.name}"?`)) return;
+        setFeedback(null);
         try {
             await fetch(`${apiBase}/${pl.id}`, {
                 method: 'DELETE',
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': getCsrfToken() },
             });
             fetchPlaylists();
-        } catch { /* handle error */ }
+            setFeedback({ type: 'success', text: `Playlist "${pl.name}" eliminada.` });
+        } catch { setFeedback({ type: 'error', text: 'Error al eliminar' }); }
     };
 
     return (
@@ -104,6 +126,18 @@ export default function AudioStationPlaylists() {
                     <Plus className="w-4 h-4" /> Crear Nueva Lista
                 </button>
             </div>
+
+            {(feedback || error) && (
+                <div className={`mb-4 p-3 rounded-xl border text-xs font-medium ${
+                    error
+                        ? 'bg-red-500/10 border-red-500/20 text-red-400'
+                        : feedback?.type === 'success'
+                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                            : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                }`}>
+                    {error || feedback?.text}
+                </div>
+            )}
 
             {/* Create Modal */}
             {showCreate && (
