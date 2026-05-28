@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -451,7 +452,7 @@ class AdminDashboardController extends Controller
             'role'               => ['required', 'in:client,admin'],
         ]);
 
-        User::create([
+        $client = User::create([
             'username'           => $validated['username'] ?? null,
             'name'               => $validated['name'],
             'phone'              => $validated['phone'] ?? null,
@@ -463,7 +464,15 @@ class AdminDashboardController extends Controller
             'send_welcome_email' => $validated['send_welcome_email'] ?? false,
         ]);
 
-        return redirect()->route('admin.clients')->with('success', 'Cliente creado correctamente.');
+        $apiToken = null;
+        if ($validated['api_access'] === 'active') {
+            $apiToken = $client->generateApiToken();
+        }
+
+        return redirect()->route('admin.clients')->with('success', $apiToken
+            ? "Cliente creado correctamente. Token API: <code class='select-all'>{$apiToken}</code>"
+            : 'Cliente creado correctamente.'
+        );
     }
 
     /**
@@ -547,6 +556,8 @@ class AdminDashboardController extends Controller
             'role'       => ['required', 'in:client,admin'],
         ]);
 
+        $previousApiAccess = $user->getOriginal('api_access');
+
         $user->username   = $validated['username'] ?? null;
         $user->name       = $validated['name'];
         $user->phone      = $validated['phone'] ?? null;
@@ -561,7 +572,17 @@ class AdminDashboardController extends Controller
 
         $user->save();
 
-        return redirect()->route('admin.clients.show', $user->id)->with('success', 'Cliente actualizado correctamente.');
+        $apiToken = null;
+        if ($validated['api_access'] === 'active' && $previousApiAccess !== 'active') {
+            $apiToken = $user->generateApiToken();
+        } elseif ($validated['api_access'] !== 'active' && $previousApiAccess === 'active') {
+            $user->revokeApiToken();
+        }
+
+        return redirect()->route('admin.clients.show', $user->id)->with('success', $apiToken
+            ? "Cliente actualizado correctamente. Token API: <code class='select-all'>{$apiToken}</code>"
+            : 'Cliente actualizado correctamente.'
+        );
     }
 
     /**
@@ -681,30 +702,34 @@ class AdminDashboardController extends Controller
             ? $validated['publish_name']
             : '/stream';
 
-        $station = Station::create([
-            'user_id'             => $validated['client_id'],
-            'name'                => $validated['station_name'],
-            'publish_name'        => $publishName,
-            'slug'                => Str::slug($validated['station_name']) . '-' . Str::random(4),
-            'type'                => 'audio',
-            'frontend'            => $validated['frontend'],
-            'backend'             => $validated['autodj_service'],
-            'autodj_service'      => $validated['autodj_service'],
-            'port'                => $validated['port'],
-            'admin_password'      => $adminPassword,
-            'mountpoints'         => $validated['mountpoints'],
-            'autodj_sources'      => $validated['autodj_sources'],
-            'bitrate'             => $validated['bitrate'],
-            'max_listeners'       => $validated['max_listeners'],
-            'disk_space_limit'    => $validated['disk_space_limit'],
-            'data_transfer_limit' => $validated['data_transfer_limit'],
-            'status'              => 'offline',
-            'is_active'           => true,
-            'autodj_enabled'      => $request->boolean('autodj_enabled', true),
-        ]);
+        $station = DB::transaction(function () use ($validated, $adminPassword, $publishName, $request) {
+            $station = Station::create([
+                'user_id'             => $validated['client_id'],
+                'name'                => $validated['station_name'],
+                'publish_name'        => $publishName,
+                'slug'                => Str::slug($validated['station_name']) . '-' . Str::random(4),
+                'type'                => 'audio',
+                'frontend'            => $validated['frontend'],
+                'backend'             => $validated['autodj_service'],
+                'autodj_service'      => $validated['autodj_service'],
+                'port'                => $validated['port'],
+                'admin_password'      => $adminPassword,
+                'mountpoints'         => $validated['mountpoints'],
+                'autodj_sources'      => $validated['autodj_sources'],
+                'bitrate'             => $validated['bitrate'],
+                'max_listeners'       => $validated['max_listeners'],
+                'disk_space_limit'    => $validated['disk_space_limit'],
+                'data_transfer_limit' => $validated['data_transfer_limit'],
+                'status'              => 'offline',
+                'is_active'           => true,
+                'autodj_enabled'      => $request->boolean('autodj_enabled', true),
+            ]);
 
-        $this->orchestrator->setup($station);
-        $this->orchestrator->start($station);
+            $this->orchestrator->setup($station);
+            $this->orchestrator->start($station);
+
+            return $station;
+        });
 
         return redirect()->route('admin.audio')->with('success', "¡Radio '{$station->name}' creada con éxito! Admin Password: {$adminPassword}");
     }
@@ -1020,10 +1045,46 @@ class AdminDashboardController extends Controller
     public function deleteStation(Station $station)
     {
         $name = $station->name;
-        $this->orchestrator->delete($station);
-        $station->delete();
+
+        DB::transaction(function () use ($station) {
+            $this->orchestrator->delete($station);
+            $station->delete();
+        });
 
         return back()->with('success', "La emisora '{$name}' y sus contenedores asociados han sido eliminados.");
+    }
+
+    /**
+     * Listar logs de impersonación (auditoría).
+     */
+    public function impersonationLogs(): \Illuminate\Http\JsonResponse
+    {
+        $logs = \App\Models\ImpersonationLog::with(['admin:id,name,email', 'targetUser:id,name,email'])
+            ->orderByDesc('started_at')
+            ->limit(100)
+            ->get()
+            ->map(fn ($log) => [
+                'id' => $log->id,
+                'admin' => [
+                    'id' => $log->admin->id,
+                    'name' => $log->admin->name,
+                    'email' => $log->admin->email,
+                ],
+                'target_user' => [
+                    'id' => $log->targetUser->id,
+                    'name' => $log->targetUser->name,
+                    'email' => $log->targetUser->email,
+                ],
+                'started_at' => $log->started_at->toIso8601String(),
+                'ended_at' => $log->ended_at?->toIso8601String(),
+                'duration' => $log->ended_at
+                    ? $log->started_at->diffInMinutes($log->ended_at) . ' min'
+                    : 'Activo',
+                'ip_address' => $log->ip_address,
+                'active' => $log->ended_at === null,
+            ]);
+
+        return response()->json(['logs' => $logs]);
     }
 }
 

@@ -74,7 +74,7 @@ class ClientDashboardController extends Controller
             'service_type' => $station->service_type ?? ($station->type === 'video' ? 'live_streaming' : 'none'),
             'server_domain' => $domain,
             'rtmp_domain' => $domain,
-            'dj_password' => $station->admin_password ?? ('dj_' . $station->slug),
+            'dj_password' => $station->stream_key ?? ('dj_' . $station->slug),
             'storage_used_mb' => round($station->mediaFiles()->sum('size') / 1024 / 1024, 2),
             'storage_limit_mb' => $station->storage_limit ?? 1024,
         ];

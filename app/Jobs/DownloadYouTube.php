@@ -7,10 +7,10 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Process\Process;
+use App\Models\YtDlJob;
 use Modules\Stations\Models\Station;
 use Modules\AutoDJ\Models\MediaFile;
 use Modules\AutoDJ\Models\Playlist;
@@ -44,12 +44,10 @@ class DownloadYouTube implements ShouldQueue
      */
     public function handle(): void
     {
-        $jobs = Cache::get('youtube_downloader_jobs', []);
-        if (isset($jobs[$this->jobId])) {
-            $jobs[$this->jobId]['status'] = 'downloading';
-            $jobs[$this->jobId]['progress'] = 5;
-            Cache::put('youtube_downloader_jobs', $jobs, 86400);
-        }
+        YtDlJob::where('job_id', $this->jobId)->update([
+            'status' => 'downloading',
+            'progress' => 5,
+        ]);
 
         // Determine destination folder
         $station = null;
@@ -114,14 +112,18 @@ class DownloadYouTube implements ShouldQueue
             throw new \Exception('yt-dlp no está instalado. Instálelo: pip install yt-dlp (Linux/Mac) o winget install yt-dlp.yt-dlp (Windows).');
         }
 
-        // Build yt-dlp arguments
-        // Output template (filename)
+        // URL whitelist — only allow recognized video platforms
+        if (!$this->isValidVideoUrl($this->url)) {
+            throw new \Exception('URL no válida. Solo se permiten enlaces de YouTube, Vimeo, Dailymotion y plataformas soportadas por yt-dlp.');
+        }
+
+        // Build yt-dlp arguments via Symfony Process array (safe from shell injection)
         $outputTemplate = $destPath . DIRECTORY_SEPARATOR . '%(title)s.%(ext)s';
-        
+
         $cmd = [];
         $cmd[] = $ytDlp;
         $cmd[] = '--no-playlist';
-        
+
         if ($this->format === 'audio') {
             $cmd[] = '-x';
             $cmd[] = '--audio-format';
@@ -132,9 +134,10 @@ class DownloadYouTube implements ShouldQueue
             $cmd[] = '-f';
             $cmd[] = 'mp4';
         }
-        
+
         $cmd[] = '-o';
         $cmd[] = $outputTemplate;
+        $cmd[] = '--';
         $cmd[] = $this->url;
 
         Log::info("Starting YouTube download command: " . implode(' ', $cmd));
@@ -213,25 +216,19 @@ class DownloadYouTube implements ShouldQueue
             }
 
             // Mark job as done
-            $jobs = Cache::get('youtube_downloader_jobs', []);
-            if (isset($jobs[$this->jobId])) {
-                $jobs[$this->jobId]['status'] = 'done';
-                $jobs[$this->jobId]['progress'] = 100;
-                if ($newestFile) {
-                    $jobs[$this->jobId]['title'] = pathinfo($newestFile->getFilename(), PATHINFO_FILENAME);
-                }
-                Cache::put('youtube_downloader_jobs', $jobs, 86400);
-            }
+            YtDlJob::where('job_id', $this->jobId)->update([
+                'status' => 'done',
+                'progress' => 100,
+                'title' => $newestFile ? pathinfo($newestFile->getFilename(), PATHINFO_FILENAME) : null,
+            ]);
 
         } catch (\Exception $e) {
             Log::error("YouTube Downloader Job failed: " . $e->getMessage());
-            
-            $jobs = Cache::get('youtube_downloader_jobs', []);
-            if (isset($jobs[$this->jobId])) {
-                $jobs[$this->jobId]['status'] = 'error';
-                $jobs[$this->jobId]['error'] = $e->getMessage();
-                Cache::put('youtube_downloader_jobs', $jobs, 86400);
-            }
+
+            YtDlJob::where('job_id', $this->jobId)->update([
+                'status' => 'error',
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -240,10 +237,32 @@ class DownloadYouTube implements ShouldQueue
      */
     protected function updateProgress(int $pct): void
     {
-        $jobs = Cache::get('youtube_downloader_jobs', []);
-        if (isset($jobs[$this->jobId])) {
-            $jobs[$this->jobId]['progress'] = $pct;
-            Cache::put('youtube_downloader_jobs', $jobs, 86400);
+        YtDlJob::where('job_id', $this->jobId)->update(['progress' => $pct]);
+    }
+
+    private function isValidVideoUrl(string $url): bool
+    {
+        $host = strtolower(parse_url($url, PHP_URL_HOST) ?: '');
+
+        if (empty($host)) {
+            return false;
         }
+
+        $allowedDomains = [
+            'youtube.com', 'www.youtube.com', 'youtu.be',
+            'm.youtube.com', 'music.youtube.com',
+            'vimeo.com', 'www.vimeo.com', 'player.vimeo.com',
+            'dailymotion.com', 'www.dailymotion.com',
+            'twitch.tv', 'www.twitch.tv',
+            'soundcloud.com', 'www.soundcloud.com',
+        ];
+
+        foreach ($allowedDomains as $domain) {
+            if ($host === $domain || str_ends_with($host, '.' . $domain)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

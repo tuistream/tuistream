@@ -15,16 +15,22 @@ class LiquidsoapConfigGenerator
      * @param string $djPassword Contraseña para que los DJs se conecten en vivo.
      * @return string
      */
-    public function generate(Station $station, string $icecastSourcePassword, string $djPassword, string $icecastHost = '127.0.0.1'): string
+    public function generate(Station $station, string $icecastSourcePassword, string $djPassword, string $icecastHost = 'icecast'): string
     {
         $slug = $station->slug;
         $bitrate = $station->bitrate;
         $domain = Setting::get('server_domain', request()->getHost());
-        
+
+        $escSourcePass = $this->escapeLiqString($icecastSourcePassword);
+        $escDjPass     = $this->escapeLiqString($djPassword);
+        $escName       = $this->escapeLiqString($station->name);
+        $escHost       = $this->escapeLiqString($icecastHost);
+        $escDomain     = $this->escapeLiqString($domain);
+
         // Rutas internas de los contenedores Docker
         $mediaPath = "/usr/share/liquidsoap/media";
         $fallbackFile = "/usr/share/liquidsoap/fallback.mp3";
-        $djPort = $station->port + 1000; // Por ejemplo, si la estación está en el puerto 8000, el DJ entra por el 9000
+        $djPort = $station->port + 1000;
 
         // Determinar si la salida es para Icecast o SHOUTcast
         if ($station->frontend === 'shoutcast') {
@@ -32,11 +38,11 @@ class LiquidsoapConfigGenerator
 # Enviar flujo de audio hacia el servidor SHOUTcast local
 output.shoutcast(
     %mp3(bitrate={$bitrate}),
-    host = "{$icecastHost}",
+    host = "{$escHost}",
     port = 8000,
-    password = "{$icecastSourcePassword}",
-    name = "{$station->name} - TuiStream",
-    url = "https://{$domain}",
+    password = "{$escSourcePass}",
+    name = "{$escName} - TuiStream",
+    url = "https://{$escDomain}",
     genre = "Mix",
     radio
 )
@@ -46,13 +52,13 @@ LIQ;
 # Enviar flujo de audio hacia el servidor Icecast local (dentro de la red Docker)
 output.icecast(
     %mp3(bitrate={$bitrate}),
-    host = "{$icecastHost}",
+    host = "{$escHost}",
     port = 8000,
-    password = "{$icecastSourcePassword}",
+    password = "{$escSourcePass}",
     mount = "/radio.mp3",
-    name = "{$station->name} - TuiStream",
+    name = "{$escName} - TuiStream",
     description = "Transmitido por TuiStream",
-    url = "https://{$domain}",
+    url = "https://{$escDomain}",
     genre = "Mix",
     radio
 )
@@ -60,7 +66,7 @@ LIQ;
         }
 
         return <<<LIQ
-# Configuración Liquidsoap para la estación: {$station->name} ({$slug})
+# Configuración Liquidsoap para la estación: {$escName} ({$slug})
 # Generado automáticamente por TuiStream
 
 # Ajustar nivel de logs
@@ -72,7 +78,7 @@ set("log.file.path", "/usr/share/liquidsoap/logs/liquidsoap.log")
 live_dj = input.harbor(
     "live",
     port = {$djPort},
-    password = "{$djPassword}",
+    password = "{$escDjPass}",
     buffer = 2.0,
     max = 10.0
 )
@@ -110,5 +116,14 @@ radio = crossfade(fade_in=1.5, fade_out=1.5, radio)
 
 {$outputDirective}
 LIQ;
+    }
+
+    private function escapeLiqString(string $value): string
+    {
+        return str_replace(
+            ['\\', '"', "\$"],
+            ['\\\\', '\\"', '\\$'],
+            $value
+        );
     }
 }

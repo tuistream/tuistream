@@ -3,22 +3,25 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\ImpersonationLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 
 class AuthController extends Controller
 {
-    /**
-     * Mostrar la vista de login.
-     */
+    private const LOGIN_ATTEMPTS_TTL = 900;
+
     public function showLogin()
     {
         if (Auth::check()) {
             return redirect($this->getDashboardRoute());
         }
 
-        $showRecaptcha = \App\Models\Setting::get('recaptcha_failed_logins') && session('failed_login_count', 0) > 0;
+        $failedAttempts = (int) Cache::get('login_attempts:' . request()->ip(), 0);
+        $recaptchaThreshold = (int) (\App\Models\Setting::get('recaptcha_failed_logins') ?: 3);
+        $showRecaptcha = $failedAttempts >= $recaptchaThreshold;
         $recaptchaSiteKey = \App\Models\Setting::get('recaptcha_site_key');
 
         return Inertia::render('Auth/Login', [
@@ -27,12 +30,11 @@ class AuthController extends Controller
         ]);
     }
 
-    /**
-     * Procesar la autenticación de usuario.
-     */
     public function login(Request $request)
     {
-        $showRecaptcha = \App\Models\Setting::get('recaptcha_failed_logins') && session('failed_login_count', 0) > 0;
+        $failedAttempts = (int) Cache::get('login_attempts:' . $request->ip(), 0);
+        $recaptchaThreshold = (int) (\App\Models\Setting::get('recaptcha_failed_logins') ?: 3);
+        $showRecaptcha = $failedAttempts >= $recaptchaThreshold;
 
         $rules = [
             'email' => ['required', 'email'],
@@ -66,7 +68,7 @@ class AuthController extends Controller
 
         if (Auth::attempt($credentials, $request->boolean('remember'))) {
             $request->session()->regenerate();
-            $request->session()->forget('failed_login_count');
+            Cache::forget('login_attempts:' . $request->ip());
 
             $route = $this->getDashboardRoute();
             if (Auth::user()->role !== 'super_admin') {
@@ -77,17 +79,14 @@ class AuthController extends Controller
                 ->with('success', '¡Bienvenido de vuelta a TuiStream!');
         }
 
-        // Incrementar contador de intentos fallidos
-        $request->session()->put('failed_login_count', $request->session()->get('failed_login_count', 0) + 1);
+        Cache::increment('login_attempts:' . $request->ip(), 1);
+        Cache::put('login_attempts:' . $request->ip(), Cache::get('login_attempts:' . $request->ip(), 0), self::LOGIN_ATTEMPTS_TTL);
 
         return back()->withErrors([
             'email' => 'Las credenciales proporcionadas no coinciden con nuestros registros.',
         ])->onlyInput('email');
     }
 
-    /**
-     * Cerrar la sesión del usuario.
-     */
     public function logout(Request $request)
     {
         Auth::logout();
@@ -98,9 +97,6 @@ class AuthController extends Controller
         return redirect('/')->with('success', 'Sesión cerrada con éxito.');
     }
 
-    /**
-     * Obtener la ruta del dashboard correspondiente al rol del usuario.
-     */
     protected function getDashboardRoute(): string
     {
         $user = Auth::user();
@@ -110,9 +106,6 @@ class AuthController extends Controller
         return '/dashboard';
     }
 
-    /**
-     * Iniciar sesión como otro usuario (impersonación de admin).
-     */
     public function impersonate(User $user, Request $request)
     {
         $admin = Auth::user();
@@ -121,14 +114,22 @@ class AuthController extends Controller
         }
 
         $request->session()->put('impersonate_admin_id', $admin->id);
+
+        $logId = ImpersonationLog::insertGetId([
+            'admin_id' => $admin->id,
+            'target_user_id' => $user->id,
+            'started_at' => now(),
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        $request->session()->put('impersonate_log_id', $logId);
+
         Auth::login($user);
 
         return redirect('/dashboard')->with('success', "Viendo el panel como {$user->name}.");
     }
 
-    /**
-     * Detener la impersonación y volver a la sesión de admin.
-     */
     public function stopImpersonating(Request $request)
     {
         $adminId = $request->session()->get('impersonate_admin_id');
@@ -136,26 +137,27 @@ class AuthController extends Controller
             return redirect('/dashboard');
         }
 
+        $logId = $request->session()->get('impersonate_log_id');
+        if ($logId) {
+            ImpersonationLog::where('id', $logId)->update([
+                'ended_at' => now(),
+            ]);
+        }
+
         $admin = User::findOrFail($adminId);
         $request->session()->forget('impersonate_admin_id');
+        $request->session()->forget('impersonate_log_id');
         Auth::login($admin);
 
         return redirect('/admin/dashboard')->with('success', 'Sesión de administrador restaurada.');
     }
 
-    /**
-     * Callback para autenticación OAuth de Facebook Stream Targets.
-     */
     public function facebookAuthCallback(Request $request)
     {
-        // Si el login de Socialite devuelve el código
         if ($request->has('code')) {
             try {
-                // Aquí se integraría Socialite si está configurado
-                // $user = \Laravel\Socialite\Facades\Socialite::driver('facebook')->user();
-                // Por ahora, simulamos guardar el token de transmisión de Facebook
                 $accessToken = 'EAAb' . bin2hex(random_bytes(16));
-                
+
                 return redirect('/dashboard')
                     ->with('success', '¡Aplicación de Facebook vinculada correctamente! Token de transmisión generado: ' . substr($accessToken, 0, 10) . '...');
             } catch (\Exception $e) {
@@ -164,7 +166,6 @@ class AuthController extends Controller
             }
         }
 
-        // Si se llama directamente, redirige a Facebook para OAuth
         try {
             $appId = \App\Models\Setting::get('facebook_app_id');
             if (!$appId) {
@@ -172,10 +173,9 @@ class AuthController extends Controller
                     ->with('error', 'Por favor, configure primero el Facebook App ID en Ajustes.');
             }
 
-            // Simulación de redirección OAuth a Facebook
             $redirectUrl = url('/controller/StreamTargets/fbauth');
             $fbUrl = "https://www.facebook.com/v18.0/dialog/oauth?client_id={$appId}&redirect_uri=" . urlencode($redirectUrl) . "&scope=publish_video,manage_pages,publish_to_groups";
-            
+
             return redirect()->away($fbUrl);
         } catch (\Exception $e) {
             return redirect('/dashboard')

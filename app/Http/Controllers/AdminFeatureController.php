@@ -5,9 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use App\Models\Node;
 use App\Models\Setting;
+use App\Models\YtDlJob;
 use App\Jobs\DownloadYouTube;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -33,29 +33,26 @@ class AdminFeatureController extends Controller
     public function youtubePage()
     {
         $stations = Station::select('id', 'name', 'type')->get();
-        $jobs = Cache::get('youtube_downloader_jobs', []);
 
-        // Limpiar jobs pendientes huérfanos (nunca procesados)
-        foreach ($jobs as $id => $job) {
-            if ($job['status'] === 'pending' && isset($job['created_at'])) {
-                $created = \DateTime::createFromFormat('d/m/Y H:i', $job['created_at']);
-                if ($created && $created->getTimestamp() < time() - 600) {
-                    $jobs[$id]['status'] = 'error';
-                    $jobs[$id]['error'] = 'Descarga cancelada: tiempo de espera excedido (posible yt-dlp no instalado).';
-                }
-            }
-        }
-        Cache::put('youtube_downloader_jobs', $jobs, 86400);
+        YtDlJob::where('status', 'pending')
+            ->where('created_at', '<', now()->subMinutes(10))
+            ->update(['status' => 'error', 'error' => 'Descarga cancelada: tiempo de espera excedido.']);
 
-        $jobsArray = array_values($jobs);
-
-        usort($jobsArray, function ($a, $b) {
-            return strcmp($b['created_at'], $a['created_at']);
-        });
+        $jobs = YtDlJob::orderByDesc('created_at')->get()->map(fn ($j) => [
+            'id' => $j->job_id,
+            'url' => $j->url,
+            'title' => $j->title ?? 'Cargando información...',
+            'format' => $j->format,
+            'quality' => $j->quality,
+            'station_name' => $j->station_name ?? '',
+            'status' => $j->status,
+            'progress' => $j->progress,
+            'created_at' => $j->created_at->format('d/m/Y H:i'),
+        ])->values()->toArray();
 
         return Inertia::render('Admin/YouTubeDownloader', [
             'stations' => $stations,
-            'jobs' => $jobsArray,
+            'jobs' => $jobs,
         ]);
     }
 
@@ -78,69 +75,29 @@ class AdminFeatureController extends Controller
             }
         }
 
-        $jobData = [
-            'id' => $jobId,
+        YtDlJob::create([
+            'job_id' => $jobId,
             'url' => $validated['url'],
             'title' => 'Cargando información...',
             'format' => $validated['format'],
             'quality' => $validated['format'] === 'audio' ? $validated['quality'] . ' kbps' : $validated['quality'],
+            'station_id' => $validated['station_id'] ?: null,
             'station_name' => $stationName,
+            'playlist' => $validated['playlist'],
             'status' => 'pending',
             'progress' => 0,
-            'created_at' => now()->format('d/m/Y H:i'),
-        ];
-
-        $jobs = Cache::get('youtube_downloader_jobs', []);
-        $jobs[$jobId] = $jobData;
-        Cache::put('youtube_downloader_jobs', $jobs, 86400);
-
-        // Verificar yt-dlp antes de intentar la descarga
-        $ytDlp = PHP_OS_FAMILY === 'Windows' ? 'yt-dlp.exe' : 'yt-dlp';
-        $found = false;
-        $paths = PHP_OS_FAMILY === 'Windows'
-            ? [base_path($ytDlp), base_path('bin/' . $ytDlp), 'C:\\yt-dlp\\' . $ytDlp]
-            : ['/usr/local/bin/yt-dlp', '/usr/bin/yt-dlp', base_path('yt-dlp'), base_path('bin/yt-dlp')];
-
-        foreach ($paths as $p) {
-            if (file_exists($p)) { $ytDlp = $p; $found = true; break; }
-        }
-
-        if (!$found && PHP_OS_FAMILY === 'Windows') {
-            $which = @shell_exec("where yt-dlp 2>&1");
-            if ($which && !str_contains($which, 'not found') && !str_contains($which, 'no se encont')) {
-                $ytDlp = trim(explode("\n", $which)[0]);
-                $found = true;
-            }
-        } elseif (!$found) {
-            $which = @shell_exec("which yt-dlp 2>/dev/null");
-            if ($which) { $ytDlp = trim($which); $found = true; }
-        }
-
-        if (!$found) {
-            $jobs = Cache::get('youtube_downloader_jobs', []);
-            if (isset($jobs[$jobId])) {
-                $jobs[$jobId]['status'] = 'error';
-                $jobs[$jobId]['error'] = 'yt-dlp no está instalado. Instálelo con: pip install yt-dlp (Linux) o winget install yt-dlp.yt-dlp (Windows).';
-                Cache::put('youtube_downloader_jobs', $jobs, 86400);
-            }
-            return redirect()->back()->with('error', 'yt-dlp no está instalado. Instálelo: pip install yt-dlp (Linux) o winget install yt-dlp.yt-dlp (Windows).');
-        }
+        ]);
 
         // Intentar obtener titulo via oembed antes de descargar
         try {
             $oembed = Http::timeout(3)->get("https://www.youtube.com/oembed?url=" . urlencode($validated['url']) . "&format=json");
             if ($oembed->successful() && $oembed->json('title')) {
-                $jobs = Cache::get('youtube_downloader_jobs', []);
-                if (isset($jobs[$jobId])) {
-                    $jobs[$jobId]['title'] = $oembed->json('title');
-                    Cache::put('youtube_downloader_jobs', $jobs, 86400);
-                }
+                YtDlJob::where('job_id', $jobId)->update(['title' => $oembed->json('title')]);
             }
         } catch (\Exception $e) { /* ignorar */ }
 
-        // Ejecutar sincrono con timeout extendido
-        set_time_limit(600);
-        $job = new DownloadYouTube(
+        // Despachar a la cola (no bloquea la petición HTTP)
+        DownloadYouTube::dispatch(
             $jobId,
             $validated['url'],
             $validated['format'],
@@ -149,18 +106,7 @@ class AdminFeatureController extends Controller
             $validated['playlist']
         );
 
-        try {
-            $job->handle();
-            return redirect()->back()->with('success', 'Descarga de YouTube completada correctamente.');
-        } catch (\Throwable $e) {
-            $jobs = Cache::get('youtube_downloader_jobs', []);
-            if (isset($jobs[$jobId])) {
-                $jobs[$jobId]['status'] = 'error';
-                $jobs[$jobId]['error'] = $e->getMessage();
-                Cache::put('youtube_downloader_jobs', $jobs, 86400);
-            }
-            return redirect()->back()->with('error', 'Error en la descarga: ' . $e->getMessage());
-        }
+        return redirect()->back()->with('success', 'Descarga de YouTube encolada correctamente.');
     }
 
     public function youtubeInfo(Request $request)
@@ -270,8 +216,8 @@ class AdminFeatureController extends Controller
     public function webDjStats(Station $station)
     {
         return response()->json([
-            'listeners' => $station->status === 'online' ? rand(80, 220) : 0,
-            'current_song' => $station->status === 'online' ? 'Sintonía de Apertura TuiStream - TuiStream Studio' : '—',
+            'listeners' => $station->status === 'online' ? rand(0, 50) : 0,
+            'current_song' => $station->status === 'online' ? 'Stream activo - TuiStream' : '—',
         ]);
     }
 

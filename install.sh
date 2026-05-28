@@ -173,11 +173,10 @@ info "Código descargado en ${APP_DIR}"
 
 # ── Paso 6: Configurar .env ─────────────────────────────────────────────────
 step "Paso 6/8: Generando configuración..."
-DB_PASS=$(openssl rand -hex 16)
+DB_PASS=$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-16)
 APP_KEY_BASE=$(openssl rand -hex 32)
-REDIS_PASS=$(openssl rand -hex 12)
-STREAM_PASS=$(openssl rand -hex 8)
-ADMIN_PASS_HASH='$2y$12$PLACEHOLDER_REPLACE_DURING_BUILD'
+REDIS_PASS=$(openssl rand -base64 12 | tr -d '/+=' | cut -c1-12)
+STREAM_PASS=$(openssl rand -base64 8 | tr -d '/+=' | cut -c1-8)
 
 cat > .env <<ENVEOF
 APP_NAME="${APP_NAME}"

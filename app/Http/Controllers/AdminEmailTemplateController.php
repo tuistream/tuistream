@@ -62,8 +62,8 @@ class AdminEmailTemplateController extends Controller
 
         EmailTemplate::create([
             'name' => $validated['name'],
-            'subject' => $validated['subject'],
-            'body' => $validated['body'],
+            'subject' => strip_tags($validated['subject']),
+            'body' => $this->sanitizeHtml($validated['body']),
             'type' => $validated['type'],
             'variables' => $validated['variables'] ?? [],
             'is_active' => true,
@@ -83,7 +83,14 @@ class AdminEmailTemplateController extends Controller
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
-        $template->update($validated);
+        $template->update([
+            'name' => $validated['name'],
+            'subject' => strip_tags($validated['subject']),
+            'body' => $this->sanitizeHtml($validated['body']),
+            'type' => $validated['type'],
+            'variables' => $validated['variables'] ?? $template->variables,
+            'is_active' => $validated['is_active'] ?? $template->is_active,
+        ]);
 
         return back()->with('success', 'Plantilla actualizada correctamente.');
     }
@@ -151,5 +158,90 @@ class AdminEmailTemplateController extends Controller
         } catch (\Exception $e) {
             return back()->with('error', 'Error al enviar correo: ' . $e->getMessage());
         }
+    }
+
+    private function sanitizeHtml(string $html): string
+    {
+        $allowedTags = '<p><br><b><i><u><strong><em><a><ul><ol><li>'
+            . '<h1><h2><h3><h4><h5><h6>'
+            . '<table><thead><tbody><tr><th><td>'
+            . '<span><div><hr><blockquote><pre><code><small><sub><sup>'
+            . '<img>';
+
+        $html = strip_tags($html, $allowedTags);
+
+        $html = preg_replace(
+            '/\s(on\w+)\s*=\s*(["\'])[^"\']*\\2/i',
+            '',
+            $html
+        );
+
+        $html = preg_replace(
+            '/\s(on\w+)\s*=\s*[^\s>]*/i',
+            '',
+            $html
+        );
+
+        $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $html);
+
+        if (stripos($html, '<img') !== false) {
+            $html = preg_replace_callback(
+                '/<img\s+([^>]*?)>/i',
+                function ($matches) {
+                    $attrs = $matches[1];
+                    $safeAttrs = '';
+                    $allowedImgAttrs = ['src' => true, 'alt' => true, 'width' => true, 'height' => true, 'style' => true, 'title' => true];
+
+                    preg_match_all('/(\w+)\s*=\s*(["\'])([^"\']*)\\2/i', $attrs, $attrMatches, PREG_SET_ORDER);
+
+                    if (empty($attrMatches)) {
+                        preg_match_all('/(\w+)\s*=\s*([^\s>]+)/i', $attrs, $attrMatches, PREG_SET_ORDER);
+                    }
+
+                    foreach ($attrMatches as $attr) {
+                        $attrName = strtolower($attr[1]);
+                        if (isset($allowedImgAttrs[$attrName])) {
+                            $safeAttrs .= ' ' . $attr[0];
+                        }
+                    }
+
+                    if (stripos($safeAttrs, 'src=') === false) {
+                        return '';
+                    }
+
+                    return '<img' . $safeAttrs . '>';
+                },
+                $html
+            );
+        }
+
+        if (stripos($html, '<a') !== false) {
+            $html = preg_replace_callback(
+                '/<a\s+([^>]*?)>/i',
+                function ($matches) {
+                    $attrs = $matches[1];
+                    $href = '';
+
+                    if (preg_match('/href\s*=\s*(["\'])([^"\']*)\\1/i', $attrs, $hrefMatch)) {
+                        $href = $hrefMatch[2];
+
+                        $isSafe = str_starts_with($href, 'https://')
+                            || str_starts_with($href, 'http://')
+                            || str_starts_with($href, 'mailto:')
+                            || str_starts_with($href, '/')
+                            || str_starts_with($href, '#');
+
+                        if (!$isSafe) {
+                            return '<a>';
+                        }
+                    }
+
+                    return '<a href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '">';
+                },
+                $html
+            );
+        }
+
+        return $html;
     }
 }

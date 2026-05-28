@@ -26,25 +26,21 @@ Route::prefix('v1')->group(function () {
 
     // We can secure these with Sanctum or simple api token middleware.
     // For local development and out-of-the-box integration, we can support both API Token Bearer and simple token request parameters.
-    Route::middleware('api')->group(function () {
-        // Stations
+    Route::middleware(['api', 'api.auth'])->group(function () {
         Route::get('/stations', [StationApiController::class, 'index']);
         Route::get('/stations/{id}', [StationApiController::class, 'show']);
         Route::post('/stations', [StationApiController::class, 'store']);
         Route::put('/stations/{id}', [StationApiController::class, 'update']);
         Route::delete('/stations/{id}', [StationApiController::class, 'destroy']);
         
-        // Station Controls
         Route::get('/stations/{id}/stats', [StationApiController::class, 'stats']);
         Route::post('/stations/{id}/start', [StationApiController::class, 'start']);
         Route::post('/stations/{id}/stop', [StationApiController::class, 'stop']);
         Route::get('/stream/{id}/status', [StationApiController::class, 'streamStatus']);
         
-        // Clients
         Route::get('/clients', [StationApiController::class, 'clientsIndex']);
         Route::post('/clients', [StationApiController::class, 'clientsStore']);
         
-        // YouTube Downloader Integration
         Route::post('/youtube/download', [StationApiController::class, 'youtubeDownload']);
     });
 });

@@ -417,11 +417,31 @@ class ClientStationController extends Controller
         $this->ensureOwnership($station);
 
         $validated = $request->validate([
-            'file' => ['required', 'file', 'mimes:mp3,ogg,flac,wav,mp4,m4a', 'max:3145728'],
+            'file' => [
+                'required',
+                'file',
+                'mimetypes:audio/mpeg,audio/ogg,audio/flac,audio/wav,audio/mp4,audio/x-m4a,video/mp4',
+                'max:512000',
+                new \App\Rules\ValidAudioMime,
+            ],
         ]);
 
         $file = $validated['file'];
         $path = $file->store("stations/{$station->id}/media", 'public');
+
+        $duration = 0;
+        try {
+            $fullPath = storage_path("app/public/{$path}");
+            $ffprobe = \Symfony\Component\Process\Process::fromShellCommandline(
+                'ffprobe -v error -show_entries format=duration -of csv=p=0 ' . escapeshellarg($fullPath)
+            );
+            $ffprobe->run();
+            if ($ffprobe->isSuccessful()) {
+                $duration = (int) round((float) trim($ffprobe->getOutput()));
+            }
+        } catch (\Throwable $e) {
+            $duration = 0;
+        }
 
         MediaFile::create([
             'station_id' => $station->id,
@@ -429,7 +449,7 @@ class ClientStationController extends Controller
             'filepath' => $path,
             'title' => pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME),
             'artist' => 'Unknown',
-            'duration' => rand(120, 300), // Random simulated duration in seconds
+            'duration' => $duration,
             'size' => $file->getSize(),
         ]);
 
@@ -911,7 +931,13 @@ class ClientStationController extends Controller
         $this->ensureOwnership($station);
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'file' => 'required|file|mimes:mp3,wav,ogg,flac|max:102400',
+            'file' => [
+                'required',
+                'file',
+                'mimetypes:audio/mpeg,audio/ogg,audio/flac,audio/wav',
+                'max:102400',
+                new \App\Rules\ValidAudioMime,
+            ],
             'interval' => 'sometimes|integer|min:1|max:999',
         ]);
 

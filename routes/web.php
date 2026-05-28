@@ -14,6 +14,15 @@ use App\Http\Controllers\AdminEmailTemplateController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
+// Health Check — Monitoreo externo
+Route::get('/health', function () {
+    return response()->json([
+        'status' => 'ok',
+        'timestamp' => now()->toIso8601String(),
+        'version' => app()->version(),
+    ]);
+});
+
 // Landing Page de Bienvenida
 Route::get('/', function () {
     return Inertia::render('Welcome');
@@ -36,7 +45,7 @@ Route::get('/controller/StreamTargets/fbauth', [AuthController::class, 'facebook
 // Rutas de Autenticación (Invitados)
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
-    Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/login', [AuthController::class, 'login'])->middleware(['throttle:login', 'throttle:login-ip']);
 });
 
 // Cerrar sesión (Cualquier usuario autenticado)
@@ -155,6 +164,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/dashboard/canaltv/{station}/schedule/add', [ClientStationController::class, 'videoScheduleAdd'])->name('client.canaltv.schedule.add');
     Route::post('/dashboard/canaltv/{station}/schedule/remove', [ClientStationController::class, 'videoScheduleRemove'])->name('client.canaltv.schedule.remove');
     Route::post('/dashboard/canaltv/{station}/schedule/reorder', [ClientStationController::class, 'videoScheduleReorder'])->name('client.canaltv.schedule.reorder');
+    Route::get('/dashboard/canaltv/{station}/web-player', [ClientStationController::class, 'webPlayerPage'])->name('client.canaltv.web-player');
 
     // Herramientas del Cliente
     Route::get('/dashboard/station/{station}/youtube-downloader', [ClientStationController::class, 'youtubePage'])->name('client.station.youtube');
@@ -165,10 +175,10 @@ Route::middleware('auth')->group(function () {
 // Redirección /admin → /admin/dashboard
 Route::get('/admin', function () {
     return redirect()->route('admin.dashboard');
-})->middleware('auth');
+})->middleware(['auth', 'admin.role']);
 
 // Rutas del Panel del Administrador
-Route::middleware(['auth'])->prefix('admin')->group(function () {
+Route::middleware(['auth', 'admin.role'])->prefix('admin')->group(function () {
     // Dashboard general
     Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('admin.dashboard');
     Route::get('/system-metrics', [AdminDashboardController::class, 'systemMetricsJson'])->name('admin.system-metrics');
@@ -215,6 +225,10 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
     Route::post('/api/backups/create', [AdminBackupController::class, 'create'])->name('admin.backups.create');
     Route::get('/api/backups/download', [AdminBackupController::class, 'download'])->name('admin.backups.download');
     Route::post('/api/backups/delete', [AdminBackupController::class, 'delete'])->name('admin.backups.delete');
+    Route::post('/api/backups/verify', [AdminBackupController::class, 'verify'])->name('admin.backups.verify');
+
+    // Auditoría — Impersonation Logs
+    Route::get('/api/impersonation-logs', [AdminDashboardController::class, 'impersonationLogs'])->name('admin.impersonation-logs');
 
     // Plantillas de Email
     Route::get('/email-templates', [AdminEmailTemplateController::class, 'index'])->name('admin.email-templates');

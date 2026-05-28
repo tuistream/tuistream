@@ -2,7 +2,7 @@ import { Link, router, usePage } from '@inertiajs/react';
 import {
     Video, Power, RefreshCw, LogOut, ArrowLeft, Shield,
     Info, Settings, Link2, Globe, BarChart3, Lock, Trash2, Menu, X, Youtube,
-    FolderOpen, Calendar
+    FolderOpen, Calendar, PlaySquare
 } from 'lucide-react';
 import ThemeToggle from '@/Components/ThemeToggle';
 import { useState, useMemo } from 'react';
@@ -231,6 +231,17 @@ export default function VideoStationLayout({ children, currentSection = 'show' }
                                     <Youtube className="w-4 h-4 shrink-0" />
                                     YouTube DL
                                 </Link>
+                                <Link
+                                    href={`/dashboard/canaltv/${station.id}/web-player`}
+                                    className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                                        currentSection === 'web-player'
+                                            ? 'bg-pink-500/10 border border-pink-500/20 text-pink-400 font-bold'
+                                            : 'text-slate-400 hover:text-white hover:bg-slate-900/50'
+                                    }`}
+                                >
+                                    <PlaySquare className="w-4 h-4 shrink-0" />
+                                    Web Player
+                                </Link>
                             </div>
                         </div>
                     )}
@@ -339,10 +350,10 @@ export default function VideoStationLayout({ children, currentSection = 'show' }
                                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2 px-3">Herramientas</span>
                                 <div className="space-y-1">
                                     <Link
-                                        href={`/dashboard/station/${station.id}/youtube-downloader`}
+                                        href={`/dashboard/canaltv/${station.id}/media`}
                                         onClick={() => setIsDrawerOpen(false)}
                                         className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-bold transition-all ${
-                                            currentSection === 'youtube'
+                                            currentSection === 'media'
                                                 ? 'bg-pink-500/10 border border-pink-500/20 text-pink-400 font-bold'
                                                 : 'text-slate-400 hover:text-white'
                                         }`}
@@ -351,7 +362,7 @@ export default function VideoStationLayout({ children, currentSection = 'show' }
                                         YouTube DL
                                     </Link>
                                     <Link
-                                        href={`/dashboard/station/${station.id}/web-player`}
+                                        href={`/dashboard/canaltv/${station.id}/web-player`}
                                         onClick={() => setIsDrawerOpen(false)}
                                         className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-bold transition-all ${
                                             currentSection === 'web-player'
@@ -359,7 +370,7 @@ export default function VideoStationLayout({ children, currentSection = 'show' }
                                                 : 'text-slate-400 hover:text-white'
                                         }`}
                                     >
-                                        <Globe className="w-4.5 h-4.5 shrink-0" />
+                                        <PlaySquare className="w-4.5 h-4.5 shrink-0" />
                                         Web Player
                                     </Link>
                                 </div>

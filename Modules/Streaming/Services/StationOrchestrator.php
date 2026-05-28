@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 use Modules\Stations\Models\Station;
+use Modules\Streaming\Contracts\DockerRunner;
 use Modules\AutoDJ\Services\LiquidsoapConfigGenerator;
 
 class StationOrchestrator
@@ -15,17 +16,20 @@ class StationOrchestrator
     protected $rtmpGenerator;
     protected $composeGenerator;
     protected $baseStationsPath;
+    protected DockerRunner $docker;
 
     public function __construct(
         LiquidsoapConfigGenerator $liquidsoapGenerator,
         IcecastConfigGenerator $icecastGenerator,
         NginxRtmpConfigGenerator $rtmpGenerator,
-        DockerComposeGenerator $composeGenerator
+        DockerComposeGenerator $composeGenerator,
+        DockerRunner $docker
     ) {
         $this->liquidsoapGenerator = $liquidsoapGenerator;
         $this->icecastGenerator = $icecastGenerator;
         $this->rtmpGenerator = $rtmpGenerator;
         $this->composeGenerator = $composeGenerator;
+        $this->docker = $docker;
         
         // Carpeta base de almacenamiento de estaciones
         $this->baseStationsPath = (PHP_OS_FAMILY === 'Windows' || config('app.env') === 'local') 
@@ -38,7 +42,13 @@ class StationOrchestrator
      */
     public function getStationPath(Station $station): string
     {
-        return $this->baseStationsPath . DIRECTORY_SEPARATOR . $station->slug;
+        $slug = basename($station->slug);
+
+        if ($slug !== $station->slug || !preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $slug)) {
+            throw new \RuntimeException("Slug inválido para la estación ID {$station->id}: '{$station->slug}'. Solo se permiten caracteres [a-z0-9-] sin dobles guiones ni guiones al inicio/fin.");
+        }
+
+        return $this->baseStationsPath . DIRECTORY_SEPARATOR . $slug;
     }
 
     /**
@@ -121,31 +131,22 @@ CONF;
     public function start(Station $station): array
     {
         $stationDir = $this->getStationPath($station);
-        
+
         if (!File::exists($stationDir . '/docker-compose.yml')) {
             $this->setup($station);
         }
 
-        // Si estamos en un entorno simulado
-        if ($this->shouldMockDocker()) {
+        $result = $this->docker->up($stationDir);
+
+        if ($result['success']) {
             $station->update(['status' => 'online']);
-            Log::info("[MOCK DOCKER] Emisora {$station->slug} ({$station->type}) iniciada en modo simulado.");
-            return ['success' => true, 'output' => 'Mode MOCK: Docker Compose levantado simuladamente.'];
+            Log::info("Emisora {$station->slug} ({$station->type}) iniciada.");
+        } else {
+            $station->update(['status' => 'error']);
+            Log::error("Fallo al iniciar la emisora {$station->slug}: " . $result['output']);
         }
 
-        // Comando para levantar contenedores
-        $result = Process::path($stationDir)
-            ->run('docker compose up -d');
-
-        if ($result->successful()) {
-            $station->update(['status' => 'online']);
-            Log::info("Emisora {$station->slug} iniciada con éxito via Docker Compose.");
-            return ['success' => true, 'output' => $result->output()];
-        }
-
-        $station->update(['status' => 'error']);
-        Log::error("Fallo al iniciar la emisora {$station->slug}: " . $result->errorOutput());
-        return ['success' => false, 'output' => $result->errorOutput()];
+        return $result;
     }
 
     /**
@@ -155,27 +156,16 @@ CONF;
     {
         $stationDir = $this->getStationPath($station);
 
-        if ($this->shouldMockDocker()) {
+        $result = $this->docker->down($stationDir);
+
+        if ($result['success']) {
             $station->update(['status' => 'offline']);
-            Log::info("[MOCK DOCKER] Emisora {$station->slug} detenida en modo simulado.");
-            return ['success' => true, 'output' => 'Mode MOCK: Docker Compose detenido simuladamente.'];
+            Log::info("Emisora {$station->slug} detenida.");
+        } else {
+            Log::error("Fallo al detener la emisora {$station->slug}: " . $result['output']);
         }
 
-        if (!File::exists($stationDir . '/docker-compose.yml')) {
-            return ['success' => true, 'output' => 'No requiere detención: archivos de configuración no existen.'];
-        }
-
-        $result = Process::path($stationDir)
-            ->run('docker compose down');
-
-        if ($result->successful()) {
-            $station->update(['status' => 'offline']);
-            Log::info("Emisora {$station->slug} detenida con éxito.");
-            return ['success' => true, 'output' => $result->output()];
-        }
-
-        Log::error("Fallo al detener la emisora {$station->slug}: " . $result->errorOutput());
-        return ['success' => false, 'output' => $result->errorOutput()];
+        return $result;
     }
 
     /**
@@ -206,22 +196,6 @@ CONF;
             Log::error("Fallo al eliminar archivos de la emisora {$station->slug}: " . $e->getMessage());
             return false;
         }
-    }
-
-    /**
-     * Método defensivo para saber si debemos simular Docker
-     */
-    protected function shouldMockDocker(): bool
-    {
-        // Si estamos dentro de un contenedor Docker, simular
-        if (file_exists('/.dockerenv')) {
-            return true;
-        }
-        // En Windows (desarrollo local)
-        if (PHP_OS_FAMILY === 'Windows') {
-            return true;
-        }
-        return false;
     }
 
     /**

@@ -24,6 +24,13 @@ class IcecastConfigGenerator
         string $adminUsername = 'admin'
     ): string {
         $maxListeners = $station->max_listeners;
+        $domain = \App\Models\Setting::get('server_domain', '') ?: request()->getHost();
+
+        $escSourcePassword = $this->escapeXml($sourcePassword);
+        $escAdminPassword  = $this->escapeXml($adminPassword);
+        $escRelayPassword  = $this->escapeXml($relayPassword);
+        $escAdminUsername  = $this->escapeXml($adminUsername);
+        $escDomain         = $this->escapeXml($domain);
 
         return <<<XML
 <icecast>
@@ -41,10 +48,10 @@ class IcecastConfigGenerator
 
     <!-- Credenciales de autenticación -->
     <authentication>
-        <source-password>{$sourcePassword}</source-password>
-        <relay-password>{$relayPassword}</relay-password>
-        <admin-user>{$adminUsername}</admin-user>
-        <admin-password>{$adminPassword}</admin-password>
+        <source-password>{$escSourcePassword}</source-password>
+        <relay-password>{$escRelayPassword}</relay-password>
+        <admin-user>{$escAdminUsername}</admin-user>
+        <admin-password>{$escAdminPassword}</admin-password>
     </authentication>
 
     <!-- Configuración del directorio de red y hostname -->
@@ -58,7 +65,7 @@ class IcecastConfigGenerator
     </listen-socket>
 
     <http-headers>
-        <header name="Access-Control-Allow-Origin" value="*" />
+        <header name="Access-Control-Allow-Origin" value="{$escDomain}" />
     </http-headers>
 
     <!-- Directorios de recursos de Icecast -->
@@ -82,5 +89,10 @@ class IcecastConfigGenerator
     </security>
 </icecast>
 XML;
+    }
+
+    private function escapeXml(string $value): string
+    {
+        return htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
     }
 }

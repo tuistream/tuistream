@@ -24,6 +24,7 @@ class User extends Authenticatable
         'role',
         'status',
         'api_access',
+        'api_token',
         'send_welcome_email',
         'parent_id',
     ];
@@ -31,6 +32,7 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'api_token',
     ];
 
     /**
@@ -69,5 +71,20 @@ class User extends Authenticatable
             'password' => 'hashed',
             'send_welcome_email' => 'boolean',
         ];
+    }
+
+    public function generateApiToken(): string
+    {
+        $plainToken = 'tui_' . bin2hex(random_bytes(32));
+        $this->api_token = hash('sha256', $plainToken);
+        $this->save();
+
+        return $plainToken;
+    }
+
+    public function revokeApiToken(): void
+    {
+        $this->api_token = null;
+        $this->save();
     }
 }

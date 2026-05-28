@@ -139,15 +139,12 @@ class StationApiController extends Controller
         $this->orchestrator->start($station);
 
         return response()->json([
-            'message' => 'Station created successfully',
+            'message' => __('Station created successfully'),
             'station' => [
                 'id' => $station->id,
                 'name' => $station->name,
                 'slug' => $station->slug,
                 'port' => $station->port,
-                'admin_password' => $adminPassword,
-                'stream_key' => $streamKey,
-                'ftp_password' => $ftpPassword,
             ]
         ], 201);
     }
@@ -178,7 +175,18 @@ class StationApiController extends Controller
 
         return response()->json([
             'message' => 'Station updated successfully',
-            'station' => $station
+            'station' => [
+                'id' => $station->id,
+                'name' => $station->name,
+                'slug' => $station->slug,
+                'type' => $station->type,
+                'port' => $station->port,
+                'status' => $station->status,
+                'bitrate' => $station->bitrate,
+                'max_listeners' => $station->max_listeners,
+                'geoip_locking' => $station->geoip_locking,
+                'ndvr_rewind' => $station->ndvr_rewind,
+            ]
         ]);
     }
 

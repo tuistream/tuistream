@@ -14,7 +14,6 @@
         "plyr": "^3.8.4",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
-        "react-is": "^19.2.6",
         "recharts": "^3.8.1",
         "tailwind-merge": "^3.0.1",
         "video.js": "^8.23.7"

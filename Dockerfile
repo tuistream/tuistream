@@ -18,7 +18,9 @@ RUN apk add --no-cache \
     freetype-dev \
     icu-dev
 
-RUN pip3 install --no-cache-dir yt-dlp --break-system-packages
+RUN pip3 install --no-cache-dir --break-system-packages yt-dlp 2>/dev/null \
+    || python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir yt-dlp
+ENV PATH="/opt/venv/bin:$PATH"
 
 RUN apk add --no-cache --virtual .build-deps \
         autoconf \

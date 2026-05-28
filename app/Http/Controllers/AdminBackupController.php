@@ -18,9 +18,6 @@ class AdminBackupController extends Controller
         File::ensureDirectoryExists($this->backupPath);
     }
 
-    /**
-     * Listar todos los backups creados.
-     */
     public function list(): \Illuminate\Http\JsonResponse
     {
         $files = collect(File::files($this->backupPath))
@@ -41,9 +38,6 @@ class AdminBackupController extends Controller
         return response()->json(['backups' => $files]);
     }
 
-    /**
-     * Crear un nuevo backup (DB + archivos de storage).
-     */
     public function create(): \Illuminate\Http\JsonResponse
     {
         set_time_limit(300);
@@ -51,56 +45,65 @@ class AdminBackupController extends Controller
         $timestamp = date('Y-m-d_H-i-s');
         $filename = "tuistream_backup_{$timestamp}";
         $tempDir = storage_path("app/backups/{$filename}");
+        $pgpassFile = null;
 
         try {
             File::ensureDirectoryExists($tempDir);
 
-            // 1. Backup de la base de datos PostgreSQL
             $dbDriver = config('database.default');
             $dbDump = "{$tempDir}/database.sql";
 
             if ($dbDriver === 'pgsql') {
-                $env = [
-                    'PGPASSWORD' => config('database.connections.pgsql.password'),
-                ];
+                $pgpassFile = $this->createPgPass(
+                    config('database.connections.pgsql.host'),
+                    config('database.connections.pgsql.port', '5432'),
+                    config('database.connections.pgsql.database'),
+                    config('database.connections.pgsql.username'),
+                    config('database.connections.pgsql.password')
+                );
+
                 $cmd = sprintf(
-                    'pg_dump -h %s -U %s -d %s --no-owner --no-acl > %s',
+                    'pg_dump -h %s -p %s -U %s -d %s --no-owner --no-acl > %s',
                     escapeshellarg(config('database.connections.pgsql.host')),
+                    escapeshellarg(config('database.connections.pgsql.port', '5432')),
                     escapeshellarg(config('database.connections.pgsql.username')),
                     escapeshellarg(config('database.connections.pgsql.database')),
                     escapeshellarg($dbDump)
                 );
+
+                $env = ['PGPASSFILE' => $pgpassFile];
                 Process::run($cmd, $env);
             } elseif ($dbDriver === 'mysql') {
+                $defaultsFile = $this->createMySqlDefaults(
+                    config('database.connections.mysql.host'),
+                    config('database.connections.mysql.port', '3306'),
+                    config('database.connections.mysql.username'),
+                    config('database.connections.mysql.password')
+                );
+
                 $cmd = sprintf(
-                    'mysqldump -h %s -u %s -p%s %s > %s 2>/dev/null',
-                    escapeshellarg(config('database.connections.mysql.host')),
-                    escapeshellarg(config('database.connections.mysql.username')),
-                    escapeshellarg(config('database.connections.mysql.password')),
+                    'mysqldump --defaults-file=%s --no-tablespaces %s > %s',
+                    escapeshellarg($defaultsFile),
                     escapeshellarg(config('database.connections.mysql.database')),
                     escapeshellarg($dbDump)
                 );
                 Process::run($cmd);
+
+                File::delete($defaultsFile);
             } else {
                 File::put($dbDump, "-- No DB backup support for driver: {$dbDriver}");
             }
 
-            // 2. Copiar archivos de storage importantes
+            if ($pgpassFile) {
+                File::delete($pgpassFile);
+                $pgpassFile = null;
+            }
+
             $storageSource = storage_path('app/public');
             if (File::exists($storageSource)) {
                 File::copyDirectory($storageSource, "{$tempDir}/storage");
             }
 
-            // 3. Incluir info del sistema
-            $info = [
-                'version' => '1.0',
-                'app_name' => config('app.name'),
-                'created_at' => now()->toIso8601String(),
-                'php_version' => PHP_VERSION,
-            ];
-            File::put("{$tempDir}/backup-info.json", json_encode($info, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-
-            // 4. Comprimir en ZIP
             $zipPath = "{$this->backupPath}/{$filename}.zip";
             $zip = new \ZipArchive();
             if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) === true) {
@@ -114,10 +117,21 @@ class AdminBackupController extends Controller
                 $zip->close();
             }
 
-            // 5. Limpiar temp
+            $sha256 = hash_file('sha256', $zipPath);
+
+            $info = [
+                'version' => '1.0',
+                'app_name' => config('app.name'),
+                'created_at' => now()->toIso8601String(),
+                'php_version' => PHP_VERSION,
+                'sha256' => $sha256,
+            ];
+
+            $hashPath = "{$this->backupPath}/{$filename}.sha256";
+            File::put($hashPath, "{$sha256}  {$filename}.zip\n");
+
             File::deleteDirectory($tempDir);
 
-            // 6. Limitar a últimos 10 backups
             $this->pruneOld(10);
 
             return response()->json([
@@ -128,9 +142,13 @@ class AdminBackupController extends Controller
                     'size' => $this->formatBytes(filesize($zipPath)),
                     'size_mb' => round(filesize($zipPath) / 1024 / 1024, 2),
                     'created_at' => date('d/m/Y H:i'),
+                    'sha256' => $sha256,
                 ],
             ]);
         } catch (\Throwable $e) {
+            if ($pgpassFile && File::exists($pgpassFile)) {
+                File::delete($pgpassFile);
+            }
             File::deleteDirectory($tempDir);
             return response()->json([
                 'success' => false,
@@ -139,15 +157,16 @@ class AdminBackupController extends Controller
         }
     }
 
-    /**
-     * Descargar un backup por nombre de archivo.
-     */
     public function download(Request $request): \Symfony\Component\HttpFoundation\BinaryFileResponse|\Illuminate\Http\JsonResponse
     {
-        $name = $request->query('name');
+        $name = $this->sanitizeBackupName($request->query('name', ''));
+        if (!$name) {
+            return response()->json(['error' => 'Nombre de backup inválido.'], 400);
+        }
+
         $path = "{$this->backupPath}/{$name}";
 
-        if (! File::exists($path)) {
+        if (!File::exists($path)) {
             return response()->json(['error' => 'Backup no encontrado.'], 404);
         }
 
@@ -156,25 +175,103 @@ class AdminBackupController extends Controller
         ]);
     }
 
-    /**
-     * Eliminar un backup.
-     */
     public function delete(Request $request): \Illuminate\Http\JsonResponse
     {
-        $name = $request->input('name');
+        $name = $this->sanitizeBackupName($request->input('name', ''));
+        if (!$name) {
+            return response()->json(['error' => 'Nombre de backup inválido.'], 400);
+        }
+
         $path = "{$this->backupPath}/{$name}";
+        $hashPath = "{$this->backupPath}/" . pathinfo($name, PATHINFO_FILENAME) . '.sha256';
 
         if (File::exists($path)) {
             File::delete($path);
+            if (File::exists($hashPath)) {
+                File::delete($hashPath);
+            }
             return response()->json(['success' => true, 'message' => 'Backup eliminado.']);
         }
 
         return response()->json(['error' => 'Backup no encontrado.'], 404);
     }
 
-    /**
-     * Eliminar backups más antiguos, conservando solo $keep.
-     */
+    public function verify(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $name = $this->sanitizeBackupName($request->input('name', ''));
+        if (!$name) {
+            return response()->json(['error' => 'Nombre de backup inválido.'], 400);
+        }
+
+        $path = "{$this->backupPath}/{$name}";
+        if (!File::exists($path)) {
+            return response()->json(['error' => 'Backup no encontrado.'], 404);
+        }
+
+        $hashPath = "{$this->backupPath}/" . pathinfo($name, PATHINFO_FILENAME) . '.sha256';
+
+        if (!File::exists($hashPath)) {
+            return response()->json([
+                'valid' => false,
+                'message' => 'No se encontró archivo de verificación para este backup.',
+            ]);
+        }
+
+        $expectedHash = trim(strstr(File::get($hashPath), ' ', true) ?: File::get($hashPath));
+        $actualHash = hash_file('sha256', $path);
+
+        return response()->json([
+            'valid' => hash_equals($expectedHash, $actualHash),
+            'sha256' => $actualHash,
+        ]);
+    }
+
+    private function createPgPass(string $host, string $port, string $database, string $username, string $password): string
+    {
+        $pgpassPath = storage_path('app/backups/.pgpass_' . bin2hex(random_bytes(8)));
+        $line = implode(':', [$host, $port, $database, $username, $password]);
+        File::put($pgpassPath, $line);
+
+        if (PHP_OS_FAMILY !== 'Windows') {
+            chmod($pgpassPath, 0600);
+        }
+
+        return $pgpassPath;
+    }
+
+    private function createMySqlDefaults(string $host, string $port, string $username, string $password): string
+    {
+        $path = storage_path('app/backups/.my_' . bin2hex(random_bytes(8)) . '.cnf');
+        $content = "[client]\n";
+        $content .= "host={$host}\n";
+        $content .= "port={$port}\n";
+        $content .= "user={$username}\n";
+        $content .= "password=\"{$password}\"\n";
+
+        File::put($path, $content);
+
+        if (PHP_OS_FAMILY !== 'Windows') {
+            chmod($path, 0600);
+        }
+
+        return $path;
+    }
+
+    private function sanitizeBackupName(string $name): string
+    {
+        $sanitized = basename($name);
+
+        if ($sanitized !== $name || !str_ends_with($sanitized, '.zip')) {
+            return '';
+        }
+
+        if (!preg_match('/^tuistream_backup_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.zip$/', $sanitized)) {
+            return '';
+        }
+
+        return $sanitized;
+    }
+
     private function pruneOld(int $keep): void
     {
         $files = collect(File::files($this->backupPath))
@@ -183,7 +280,11 @@ class AdminBackupController extends Controller
 
         $toDelete = $files->slice($keep);
         foreach ($toDelete as $file) {
+            $hashFile = "{$this->backupPath}/" . pathinfo($file->getFilename(), PATHINFO_FILENAME) . '.sha256';
             File::delete($file->getRealPath());
+            if (File::exists($hashFile)) {
+                File::delete($hashFile);
+            }
         }
     }
 

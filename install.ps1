@@ -90,16 +90,16 @@ if (-not (Test-Path ".env")) {
     Copy-Item ".env.example" ".env" -Force
 }
 
-# Crear .env.docker
+# Crear .env docker con las variables necesarias
 @"
 DOMAIN=$Domain
 EMAIL=$Email
 DB_PASS=$( -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 16 | % {[char]$_}) )
 REDIS_PASS=$( -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 12 | % {[char]$_}) )
 STREAM_PASS=$( -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 8 | % {[char]$_}) )
-"@ | Out-File -FilePath ".env.docker" -Encoding utf8 -Force
+"@ | Out-File -FilePath ".env" -Encoding utf8 -Append -Force
 
-Write-Info ".env y .env.docker generados"
+Write-Info ".env configurado con variables de seguridad"
 
 # ── Construir y desplegar contenedores ────────────────────────────────────
 Write-Step "Construyendo y desplegando servicios Docker..."
@@ -113,7 +113,18 @@ Write-Info "Contenedores desplegados"
 # ── Post-instalación ──────────────────────────────────────────────────────
 Write-Step "Ejecutando migraciones y configuración final..."
 Write-Cmd "Esperando a que PostgreSQL esté listo..."
-Start-Sleep -Seconds 10
+$retries = 30
+while ($retries -gt 0) {
+    $check = docker exec tuistream_postgres pg_isready -U tuistream 2>$null
+    if ($LASTEXITCODE -eq 0) { break }
+    $retries--
+    Start-Sleep -Seconds 2
+}
+if ($retries -eq 0) {
+    Write-Error "PostgreSQL no respondió. Revisa los logs con: docker logs tuistream_postgres"
+    exit 1
+}
+Write-Info "PostgreSQL listo."
 
 docker exec tuistream_app php artisan key:generate --force
 docker exec tuistream_app php artisan migrate --force

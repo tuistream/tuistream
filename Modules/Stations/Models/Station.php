@@ -4,6 +4,7 @@ namespace Modules\Stations\Models;
 
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 use Modules\AutoDJ\Models\Playlist;
 use Modules\AutoDJ\Models\MediaFile;
 
@@ -59,8 +60,31 @@ class Station extends Model
         'disk_space_limit'     => 'integer',
         'data_transfer_limit'  => 'integer',
         'stream_targets_limit' => 'integer',
-        'stream_targets'       => 'array',
     ];
+
+    protected $hidden = [
+        'admin_password',
+        'ftp_password',
+    ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (Station $station) {
+            if (empty($station->slug)) {
+                $station->slug = Str::slug($station->name) . '-' . Str::random(4);
+            }
+
+            if (!preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $station->slug)) {
+                throw new \InvalidArgumentException("Slug inválido: '{$station->slug}'. Use formato [a-z0-9-] sin dobles guiones ni guiones al inicio/fin.");
+            }
+        });
+
+        static::updating(function (Station $station) {
+            if ($station->isDirty('slug') && !preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $station->slug)) {
+                throw new \InvalidArgumentException("Slug inválido: '{$station->slug}'. Use formato [a-z0-9-] sin dobles guiones ni guiones al inicio/fin.");
+            }
+        });
+    }
 
     /**
      * Relación con el propietario de la estación.

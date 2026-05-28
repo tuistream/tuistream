@@ -174,7 +174,7 @@ export default function Login() {
 
                 {/* Footer Credits */}
                 <p className="mt-8 text-center text-xs text-slate-500">
-                    &copy; 2026 TuiStream. Todos los derechos reservados. por <a href="https://hostuis.com" target="_blank" rel="noopener noreferrer" className="hover:text-indigo-400 font-bold transition-all underline">Hostuis Group LLC</a>.
+                    &copy; {new Date().getFullYear()} TuiStream. Todos los derechos reservados. por <a href="https://hostuis.com" target="_blank" rel="noopener noreferrer" className="hover:text-indigo-400 font-bold transition-all underline">Hostuis Group LLC</a>.
                 </p>
             </div>
         </div>

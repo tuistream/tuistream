@@ -29,9 +29,9 @@ services:
       - DB_PORT=5432
       - DB_DATABASE=tuistream
       - DB_USERNAME=tuistream
-      - DB_PASSWORD=${DB_PASS:-secret_password_123}
+      - DB_PASSWORD=${DB_PASS:?Error: DB_PASS no definida. Ejecute primero install.sh o defina la variable.}
       - REDIS_HOST=redis
-      - REDIS_PASSWORD=${REDIS_PASS:-null}
+      - REDIS_PASSWORD=${REDIS_PASS:?Error: REDIS_PASS no definida. Ejecute primero install.sh o defina la variable.}
       - BROADCAST_DRIVER=redis
       - CACHE_DRIVER=redis
       - QUEUE_CONNECTION=redis
@@ -50,7 +50,7 @@ services:
     environment:
       POSTGRES_DB: tuistream
       POSTGRES_USER: tuistream
-      POSTGRES_PASSWORD: ${DB_PASS:-secret_password_123}
+      POSTGRES_PASSWORD: ${DB_PASS:?Error: DB_PASS no definida. Ejecute primero install.sh o defina la variable.}
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
@@ -61,7 +61,7 @@ services:
     image: redis:7-alpine
     container_name: tuistream_redis
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASS:-null} --appendonly yes
+    command: redis-server --requirepass ${REDIS_PASS:?Error: REDIS_PASS no definida. Ejecute primero install.sh o defina la variable.} --appendonly yes
     volumes:
       - redisdata:/data
     networks:

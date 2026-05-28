@@ -29,8 +29,6 @@ class DockerComposeGenerator
         // y recargar nginx: nginx -s reload
         if ($station->type === 'video') {
             return <<<YAML
-version: '3.8'
-
 services:
   nginx-rtmp:
     image: tiangolo/nginx-rtmp:latest
@@ -56,8 +54,6 @@ YAML;
         // PERFIL 2: AUDIO SHOUTcast
         if ($station->frontend === 'shoutcast') {
             return <<<YAML
-version: '3.8'
-
 services:
   shoutcast:
     image: khartool/shoutcast-x64:2.6.1.777-3.19.1
@@ -95,8 +91,6 @@ YAML;
 
         // PERFIL 3: AUDIO Icecast (Default)
         return <<<YAML
-version: '3.8'
-
 services:
   icecast:
     image: libretime/icecast:2.5.0
