@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AdminFeatureController;
+use App\Http\Controllers\AdminSettingsController;
 use App\Http\Controllers\AdminStatisticsController;
 use App\Http\Controllers\ClientDashboardController;
 use App\Http\Controllers\ClientStationController;
