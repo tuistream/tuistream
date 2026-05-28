@@ -99,13 +99,13 @@ version: '3.8'
 
 services:
   icecast:
-    image: infiniteproject/icecast2:latest
+    image: libretime/icecast:2.5.0
     container_name: tuistream_station_{$slug}_icecast
     restart: unless-stopped
     ports:
       - "{$port}:8000"
     volumes:
-      - ./config/icecast.xml:/etc/icecast2/icecast.xml:ro
+      - ./config/icecast.xml:/etc/icecast.xml:ro
       - ./logs/icecast:/var/log/icecast
     networks:
       - station_net

@@ -56,7 +56,7 @@ class AdminSettingsController extends Controller
         'media_service_shoutcast' => ['value' => '1', 'type' => 'boolean', 'group' => 'plugins'],
         'autodj_service_liquidsoap' => ['value' => '1', 'type' => 'boolean', 'group' => 'plugins'],
         'nginx_rtmp_image' => ['value' => 'tiangolo/nginx-rtmp:latest', 'type' => 'string', 'group' => 'plugins'],
-        'icecast_image' => ['value' => 'infiniteproject/icecast2:latest', 'type' => 'string', 'group' => 'plugins'],
+        'icecast_image' => ['value' => 'libretime/icecast:2.5.0', 'type' => 'string', 'group' => 'plugins'],
         'shoutcast_image' => ['value' => 'mabene/shoutcast:latest', 'type' => 'string', 'group' => 'plugins'],
         'liquidsoap_image' => ['value' => 'savonet/liquidsoap:v2.2.5', 'type' => 'string', 'group' => 'plugins'],
         'nginx_rtmp_httpport' => ['value' => '19350', 'type' => 'integer', 'group' => 'plugins'],

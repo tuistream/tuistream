@@ -127,7 +127,7 @@ class AdminDashboardController extends Controller
                     if ($fp) {
                         fclose($fp);
                         $icecastInstalled = true;
-                        $icecastVersion = 'Docker infiniteproject/icecast2 (Online)';
+                        $icecastVersion = 'Docker libretime/icecast (Online)';
                     }
                 } elseif (PHP_OS_FAMILY === 'Windows') {
                     $fp = @fsockopen('127.0.0.1', 8100, $errno, $errstr, 0.1);

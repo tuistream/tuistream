@@ -67,13 +67,13 @@ services:
       - tuistream_net
 
   icecast:
-    image: infiniteproject/icecast2:latest
+    image: libretime/icecast:2.5.0
     container_name: tuistream_icecast
     restart: unless-stopped
     ports:
       - "8100:8000"
     volumes:
-      - ./docker/icecast/icecast.xml:/etc/icecast2/icecast.xml:ro
+      - ./docker/icecast/icecast.xml:/etc/icecast.xml:ro
     networks:
       - tuistream_net
 
