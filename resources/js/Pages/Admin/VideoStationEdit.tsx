@@ -7,6 +7,8 @@ import AdminLayout from './Layout';
 
 const STREAM_TARGET_PLATFORMS = ['Facebook', 'Youtube', 'RTMP', 'Icecast', 'Kick', 'VK', 'Twitch', 'Telegram', 'Instagram'];
 
+const BITRATES = [256, 320, 400, 480, 560, 640, 720, 800, 920, 1024, 1280, 1536, 1792, 2048, 2560, 3072, 3584, 4096, 4608, 5120, 5632, 6144, 6656, 7168, 7680, 8192, 9216, 10240, 11264, 12288, 13312, 14336, 99999];
+
 const labelClass = 'text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5';
 const inputClass = 'w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-pink-500/60 focus:ring-1 focus:ring-pink-500/20 transition-all';
 const selectClass = 'w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-pink-500/60 focus:ring-1 focus:ring-pink-500/20 transition-all appearance-none';
@@ -272,15 +274,15 @@ export default function VideoStationEdit() {
 
                             <div>
                                 <label className={labelClass}>Bitrate (Kbps) <span className="text-red-400">*</span></label>
-                                <input
-                                    type="number"
-                                    min={256}
-                                    max={99999}
-                                    value={data.bitrate}
-                                    onChange={e => setData('bitrate', parseInt(e.target.value))}
-                                    className={inputClass}
-                                    required
-                                />
+                                <div className="relative">
+                                    <select value={data.bitrate} onChange={e => setData('bitrate', parseInt(e.target.value))}
+                                        className={selectClass}>
+                                        {BITRATES.map(b => (
+                                            <option key={b} value={b}>{b >= 1000 ? `${(b / 1000).toFixed(b % 1000 === 0 ? 0 : 1)} Mbps` : `${b} Kbps`}</option>
+                                        ))}
+                                    </select>
+                                    <Play className="absolute right-3.5 top-3 w-3.5 h-3.5 text-slate-600 pointer-events-none" />
+                                </div>
                             </div>
 
                             <div>

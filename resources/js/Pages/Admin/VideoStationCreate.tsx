@@ -18,7 +18,7 @@ interface PageProps {
     next_port: number;
 }
 
-const BITRATES = [400, 600, 800, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000, 8000, 10000, 12000];
+const BITRATES = [256, 320, 400, 480, 560, 640, 720, 800, 920, 1024, 1280, 1536, 1792, 2048, 2560, 3072, 3584, 4096, 4608, 5120, 5632, 6144, 6656, 7168, 7680, 8192, 9216, 10240, 11264, 12288, 13312, 14336, 99999];
 const TRANSCODER_PROFILES = ['160p', '240p', '360p', '480p', '576p', '720p', '1080p', '4k', 'source'];
 const STREAM_TARGET_PLATFORMS = ['Facebook', 'Youtube', 'RTMP', 'Kick', 'VK', 'Twitch', 'Telegram', 'Instagram'];
 
