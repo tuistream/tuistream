@@ -16,9 +16,18 @@ RUN apk add --no-cache \
     libpng-dev \
     libjpeg-turbo-dev \
     freetype-dev \
-    icu-dev \
-    $PHPIZE_DEPS \
-    && pip3 install --no-cache-dir yt-dlp --break-system-packages \
+    icu-dev
+
+RUN pip3 install --no-cache-dir yt-dlp --break-system-packages
+
+RUN apk add --no-cache --virtual .build-deps \
+        autoconf \
+        automake \
+        g++ \
+        gcc \
+        make \
+        pkgconf \
+        re2c \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install \
         pdo_pgsql \
@@ -28,11 +37,11 @@ RUN apk add --no-cache \
         intl \
         pcntl \
         opcache \
-    && printf '\n' | pecl install redis \
+    && yes "" | pecl install redis \
     && docker-php-ext-enable redis \
-    && printf 'yes\nno\nno\nno\nno\nno\nno\n' | pecl install swoole \
+    && pecl install swoole \
     && docker-php-ext-enable swoole \
-    && apk del $PHPIZE_DEPS
+    && apk del .build-deps
 
 COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 
