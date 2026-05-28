@@ -110,7 +110,7 @@ export default function VideoStations() {
                                 {stations.map((s: StationItem) => (
                                     <tr key={s.id} className="hover:bg-slate-900/30 transition-all text-sm">
                                         <td className="p-4">
-                                            <p className="font-bold text-slate-200">{s.name}</p>
+                                            <Link href={`/dashboard/station/${s.id}`} className="font-bold text-indigo-400 hover:text-indigo-300 hover:underline transition-colors">{s.name}</Link>
                                             <p className="text-xs font-mono text-slate-500 mt-0.5">/{s.slug}</p>
                                         </td>
                                         <td className="p-4">
@@ -124,7 +124,7 @@ export default function VideoStations() {
                                             <span className="block text-pink-400/80 mt-0.5">key: {s.stream_key}</span>
                                         </td>
                                         <td className="p-4">
-                                            <p className="font-semibold text-slate-300 text-sm">{s.client_name}</p>
+                                            <Link href={`/admin/clients/${s.client_id}`} className="font-semibold text-indigo-400 hover:text-indigo-300 hover:underline transition-colors text-sm">{s.client_name || '—'}</Link>
                                             <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                                                 <Mail className="w-3 h-3" /> {s.client_email}
                                             </p>

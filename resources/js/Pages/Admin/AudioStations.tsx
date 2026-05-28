@@ -110,9 +110,8 @@ export default function AudioStations() {
                             <tbody className="divide-y divide-slate-900/50">
                                 {stations.map((s: StationItem) => (
                                     <tr key={s.id} className="hover:bg-slate-900/30 transition-all text-sm">
-                                        <td className="p-4">
-                                            <p className="font-bold text-slate-200">{s.name}</p>
-                                            <p className="text-xs font-mono text-slate-500 mt-0.5">/{s.slug}</p>
+                                        <td className="p-4 font-medium">
+                                            <Link href={`/dashboard/station/${s.id}`} className="text-indigo-400 hover:text-indigo-300 hover:underline transition-colors">{s.slug || s.name}</Link>
                                         </td>
                                         <td className="p-4">
                                             <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
@@ -125,7 +124,7 @@ export default function AudioStations() {
                                             <span className="block text-slate-500 mt-0.5">{s.bitrate} kbps · MP3</span>
                                         </td>
                                         <td className="p-4">
-                                            <p className="font-semibold text-slate-300 text-sm">{s.client_name}</p>
+                                            <Link href={`/admin/clients/${s.client_id}`} className="font-semibold text-indigo-400 hover:text-indigo-300 hover:underline transition-colors text-sm">{s.client_name || '—'}</Link>
                                             <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                                                 <Mail className="w-3 h-3" /> {s.client_email}
                                             </p>

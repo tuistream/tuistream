@@ -116,10 +116,18 @@ export default function Clients() {
                                             </span>
                                         </td>
                                         <td className="p-4">
-                                            <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
-                                                <Radio className="w-3.5 h-3.5 text-indigo-400" />
-                                                {c.stations_count}
-                                            </span>
+                                            {c.stations && c.stations.length > 0 ? (
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {c.stations.map((s: any) => (
+                                                        <Link key={s.id} href={`/dashboard/station/${s.id}`}
+                                                            className="px-2 py-1 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-[10px] font-bold text-indigo-400 hover:bg-indigo-500/20 hover:text-indigo-300 transition-all">
+                                                            {s.name}
+                                                        </Link>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <span className="text-slate-500 text-xs">Sin estaciones</span>
+                                            )}
                                         </td>
                                         <td className="p-4 text-xs text-slate-500">{c.created_at}</td>
                                         <td className="p-4">

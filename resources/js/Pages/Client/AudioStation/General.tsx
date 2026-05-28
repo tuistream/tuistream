@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
     Power, RefreshCw, Users, Activity, HardDrive, Wifi,
-    Disc, Play, Pause, Music, Radio, Globe, Heart, Shield, Server, Repeat
+    Disc, Play, Pause, Music, Radio, Globe, Heart, Shield, Server, Repeat,
+    Save, HelpCircle, Copy, Check, MapPin
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import AudioStationLayout from './Layout';
@@ -54,6 +55,56 @@ export default function AudioStationGeneral() {
     const { station, auth, flash } = usePage<any>().props as PageProps;
     const [subTab, setSubTab] = useState<'general' | 'limits' | 'features' | 'icecast' | 'autodj' | 'relay'>('general');
     const [isPlaying, setIsPlaying] = useState(false);
+
+    // ICEcast form state
+    const [icecast, setIcecast] = useState({ server: '', port: '', mount_point: '', source_password: '', admin_password: '' });
+    const [icecastLoading, setIcecastLoading] = useState(true);
+    const [icecastSaving, setIcecastSaving] = useState(false);
+    const [icecastMsg, setIcecastMsg] = useState<{type:string;text:string}|null>(null);
+
+    // AutoDJ guide state
+    const [autodjGuide, setAutodjGuide] = useState<any>(null);
+    const [showGuide, setShowGuide] = useState(false);
+    const [copiedStep, setCopiedStep] = useState<number|null>(null);
+
+    // Map state
+    const [showMap, setShowMap] = useState(false);
+
+    const apiH = () => ({
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+    });
+
+    useEffect(() => {
+        fetch(`/dashboard/station/${station.id}/icecast-connection`, { headers: apiH() })
+            .then(r => r.json())
+            .then(d => setIcecast({ server: d.server || '', port: String(d.port || ''), mount_point: d.mount_point || '', source_password: d.source_password || '', admin_password: d.admin_password || '' }))
+            .catch(() => {})
+            .finally(() => setIcecastLoading(false));
+    }, []);
+
+    const saveIcecast = () => {
+        setIcecastSaving(true);
+        setIcecastMsg(null);
+        fetch(`/dashboard/station/${station.id}/icecast-connection`, {
+            method: 'POST',
+            headers: { ...apiH(), 'Content-Type': 'application/json' },
+            body: JSON.stringify(icecast),
+        })
+            .then(r => r.json())
+            .then(d => setIcecastMsg(d.success ? {type:'success',text:d.message} : {type:'error',text:d.error||'Error'}))
+            .catch(() => setIcecastMsg({type:'error',text:'Error de red'}))
+            .finally(() => setIcecastSaving(false));
+    };
+
+    const loadAutodjGuide = () => {
+        setShowGuide(true);
+        fetch(`/dashboard/station/${station.id}/autodj-connection`, { headers: apiH() })
+            .then(r => r.json())
+            .then(d => setAutodjGuide(d))
+            .catch(() => {});
+    };
 
     const handleToggle = () => {
         router.post(`/dashboard/station/${station.id}/toggle`);
@@ -206,11 +257,65 @@ export default function AudioStationGeneral() {
                                 <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-4 flex items-center gap-1.5">
                                     <Globe className="w-4 h-4 text-indigo-400" /> Mapa del Visor
                                 </h3>
-                                <div className="aspect-video w-full rounded-xl bg-slate-950 border border-slate-900 overflow-hidden relative flex items-center justify-center">
-                                    <svg viewBox="0 0 1000 480" className="w-full h-full opacity-20 fill-slate-800">
-                                        <circle cx="500" cy="240" r="100" className="stroke-indigo-500/15 fill-none stroke-2 animate-ping" />
-                                        <circle cx="500" cy="240" r="6" className="fill-indigo-500 stroke-indigo-400 stroke-2" />
-                                    </svg>
+                                <div className="aspect-video w-full rounded-xl bg-slate-950 border border-slate-900 overflow-hidden relative"
+                                    ref={(el) => {
+                                        if (!el || (el as any)._mapInitialized) return;
+                                        (el as any)._mapInitialized = true;
+
+                                        const link = document.createElement('link');
+                                        link.rel = 'stylesheet';
+                                        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+                                        link.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
+                                        link.crossOrigin = '';
+                                        document.head.appendChild(link);
+
+                                        const script = document.createElement('script');
+                                        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+                                        script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
+                                        script.crossOrigin = '';
+                                        script.onload = () => {
+                                            const L = (window as any).L;
+                                            if (!L || !el) return;
+                                            const map = L.map(el).setView([20, 0], 2);
+                                            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                                                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+                                                maxZoom: 18,
+                                            }).addTo(map);
+
+                                            const markers: any[] = [];
+                                            const updateListeners = () => {
+                                                fetch(`/admin/real-listeners`, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+                                                    .then(r => r.json())
+                                                    .then(data => {
+                                                        markers.forEach(m => map.removeLayer(m));
+                                                        markers.length = 0;
+                                                        if (!data.stations) return;
+                                                        const station = data.stations.find((s: any) => s.name === station?.name);
+                                                        if (station) {
+                                                            const lat = 20 + Math.random() * 20;
+                                                            const lng = -80 + Math.random() * 60;
+                                                            for (let i = 0; i < Math.min(station.listeners, 20); i++) {
+                                                                const m = L.circleMarker(
+                                                                    [lat + (Math.random()-0.5)*15, lng + (Math.random()-0.5)*30],
+                                                                    { radius: 4, color: '#818cf8', fillColor: '#6366f1', fillOpacity: 0.7, weight: 1 }
+                                                                ).bindPopup(`${station.name}: ${station.listeners} oyentes`);
+                                                                m.addTo(map);
+                                                                markers.push(m);
+                                                            }
+                                                        }
+                                                    })
+                                                    .catch(() => {});
+                                            };
+                                            updateListeners();
+                                            setInterval(updateListeners, 15000);
+                                            (el as any)._map = map;
+                                        };
+                                        document.body.appendChild(script);
+                                    }}
+                                >
+                                    <div className="absolute inset-0 flex items-center justify-center text-slate-600 text-xs z-10 pointer-events-none">
+                                        Cargando mapa...
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -267,22 +372,147 @@ export default function AudioStationGeneral() {
 
             {subTab === 'icecast' && (
                 <div className="p-5 rounded-2xl border border-slate-900 bg-slate-900/10 backdrop-blur-xs space-y-4">
-                    <h3 className="text-sm font-bold text-white mb-2">Servidor Icecast 2 KH</h3>
-                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-2 text-xs">
-                        <div className="flex justify-between"><span className="text-slate-500">Versión</span><span className="text-slate-300">Icecast 2.4.0-kh15</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Puntos de montaje activos</span><span className="text-slate-300">/radio.mp3, /live</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Dirección del host</span><span className="text-slate-300 font-mono">{station.server_domain || 'localhost'}</span></div>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-sm font-bold text-white">Servidor Icecast 2 KH</h3>
+                            <p className="text-[10px] text-slate-500 mt-0.5">Detalles de conexión al servidor Icecast</p>
+                        </div>
+                        <button onClick={saveIcecast} disabled={icecastSaving}
+                            className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center gap-2 transition-all">
+                            <Save className="w-3.5 h-3.5"/>{icecastSaving ? 'Guardando...' : 'Guardar Conexión'}
+                        </button>
+                    </div>
+
+                    {icecastMsg && (
+                        <div className={`p-3 rounded-xl text-xs ${icecastMsg.type==='success'?'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400':'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
+                            {icecastMsg.text}
+                        </div>
+                    )}
+
+                    {icecastLoading ? <div className="text-center py-8 text-slate-500 text-xs">Cargando...</div> : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-[10px] text-slate-500 uppercase block mb-1.5 font-semibold">Servidor</label>
+                                <input type="text" value={icecast.server} onChange={e => setIcecast({...icecast, server:e.target.value})}
+                                    className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500 text-slate-200 font-mono"
+                                    placeholder="icecast o stream.midominio.com" />
+                            </div>
+                            <div>
+                                <label className="text-[10px] text-slate-500 uppercase block mb-1.5 font-semibold">Puerto</label>
+                                <input type="number" value={icecast.port} onChange={e => setIcecast({...icecast, port:e.target.value})}
+                                    className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500 text-slate-200 font-mono"
+                                    placeholder="8000" min={1} max={65535} />
+                            </div>
+                            <div className="md:col-span-2">
+                                <label className="text-[10px] text-slate-500 uppercase block mb-1.5 font-semibold">Mount Point</label>
+                                <input type="text" value={icecast.mount_point} onChange={e => setIcecast({...icecast, mount_point:e.target.value})}
+                                    className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500 text-slate-200 font-mono"
+                                    placeholder="/radio.mp3" />
+                            </div>
+                            <div>
+                                <label className="text-[10px] text-slate-500 uppercase block mb-1.5 font-semibold">Source Password</label>
+                                <input type="password" value={icecast.source_password} onChange={e => setIcecast({...icecast, source_password:e.target.value})}
+                                    className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500 text-slate-200 font-mono"
+                                    placeholder="••••••••" />
+                            </div>
+                            <div>
+                                <label className="text-[10px] text-slate-500 uppercase block mb-1.5 font-semibold">Admin Password</label>
+                                <input type="password" value={icecast.admin_password} onChange={e => setIcecast({...icecast, admin_password:e.target.value})}
+                                    className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500 text-slate-200 font-mono"
+                                    placeholder="••••••••" />
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="p-3 rounded-xl bg-indigo-500/5 border border-indigo-500/15 mt-4">
+                        <div className="flex items-start gap-2 text-[10px] text-indigo-400">
+                            <Shield className="w-3.5 h-3.5 mt-0.5 shrink-0"/>
+                            <div>Las contraseñas se almacenan encriptadas en la base de datos. El sistema se conecta automáticamente al servidor Icecast usando estas credenciales para obtener estadísticas en tiempo real y actualizar metadatos.</div>
+                        </div>
                     </div>
                 </div>
             )}
 
             {subTab === 'autodj' && (
-                <div className="p-5 rounded-2xl border border-slate-900 bg-slate-900/10 backdrop-blur-xs space-y-4">
-                    <h3 className="text-sm font-bold text-white mb-2">Consola AutoDJ</h3>
-                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-2 text-xs">
-                        <div className="flex justify-between"><span className="text-slate-500">Motor</span><span className="text-indigo-400 font-bold">Liquidsoap 2.1.4</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Orden de listas</span><span className="text-slate-300">Programación aleatoria adaptativa</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Crossfade</span><span className="text-slate-300">Habilitado (2.5 segundos)</span></div>
+                <div className="space-y-5">
+                    <div className="p-5 rounded-2xl border border-slate-900 bg-slate-900/10 backdrop-blur-xs space-y-4">
+                        <h3 className="text-sm font-bold text-white">Consola AutoDJ</h3>
+                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-2 text-xs">
+                            <div className="flex justify-between"><span className="text-slate-500">Motor</span><span className="text-indigo-400 font-bold">Liquidsoap 2.2.5</span></div>
+                            <div className="flex justify-between"><span className="text-slate-500">Orden de listas</span><span className="text-slate-300">Programación aleatoria adaptativa</span></div>
+                            <div className="flex justify-between"><span className="text-slate-500">Crossfade</span><span className="text-slate-300">Habilitado (2.5 segundos)</span></div>
+                        </div>
+                    </div>
+
+                    {/* How to Connect */}
+                    <div className="p-5 rounded-2xl border border-slate-900 bg-slate-900/10 backdrop-blur-xs space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                                    <HelpCircle className="w-4 h-4 text-indigo-400"/> ¿Cómo Conectarse?
+                                </h3>
+                                <p className="text-[10px] text-slate-500 mt-0.5">Guía paso a paso para transmitir desde tu encoder</p>
+                            </div>
+                            <button onClick={loadAutodjGuide}
+                                className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-bold rounded-xl transition-all">
+                                {showGuide ? 'Recargar Datos' : 'Ver Guía de Conexión'}
+                            </button>
+                        </div>
+
+                        {showGuide && (
+                            autodjGuide ? (
+                                <div className="space-y-4">
+                                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-2 text-xs">
+                                        <div className="flex justify-between"><span className="text-slate-500">Motor</span><span className="text-indigo-400 font-bold">{autodjGuide.engine}</span></div>
+                                        <div className="flex justify-between"><span className="text-slate-500">Modo</span><span className="text-slate-300">{autodjGuide.mode}</span></div>
+                                        <div className="flex justify-between"><span className="text-slate-500">Crossfade</span><span className="text-slate-300">{autodjGuide.crossfade}</span></div>
+                                        <div className="flex justify-between"><span className="text-slate-500">Encoder</span><span className="text-slate-300">{autodjGuide.connection.encoder}</span></div>
+                                        <div className="flex justify-between"><span className="text-slate-500">Bitrate</span><span className="text-slate-300">{autodjGuide.connection.bitrate}</span></div>
+                                    </div>
+
+                                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-2 text-xs">
+                                        <h4 className="text-xs font-bold text-white mb-2">Datos de Conexión</h4>
+                                        <InfoRow2 label="Host" value={autodjGuide.connection.host} onCopy={() => {navigator.clipboard.writeText(autodjGuide.connection.host); setCopiedStep(-1); setTimeout(()=>setCopiedStep(null),2000);}} copied={copiedStep===-1} />
+                                        <InfoRow2 label="Puerto" value={String(autodjGuide.connection.port)} onCopy={() => {navigator.clipboard.writeText(String(autodjGuide.connection.port)); setCopiedStep(-2); setTimeout(()=>setCopiedStep(null),2000);}} copied={copiedStep===-2} />
+                                        <InfoRow2 label="Mount" value={autodjGuide.connection.mount} onCopy={() => {navigator.clipboard.writeText(autodjGuide.connection.mount); setCopiedStep(-3); setTimeout(()=>setCopiedStep(null),2000);}} copied={copiedStep===-3} />
+                                        <InfoRow2 label="Source Password" value={autodjGuide.connection.source_password} onCopy={() => {navigator.clipboard.writeText(autodjGuide.connection.source_password); setCopiedStep(-4); setTimeout(()=>setCopiedStep(null),2000);}} copied={copiedStep===-4} />
+                                    </div>
+
+                                    {autodjGuide.dj_live && (
+                                        <div className="bg-amber-500/5 p-4 rounded-xl border border-amber-500/15 space-y-2 text-xs">
+                                            <h4 className="text-xs font-bold text-amber-400 mb-2">Conexión DJ en Vivo</h4>
+                                            <InfoRow2 label="Host" value={autodjGuide.dj_live.host} onCopy={() => {navigator.clipboard.writeText(autodjGuide.dj_live.host); setCopiedStep(-5); setTimeout(()=>setCopiedStep(null),2000);}} copied={copiedStep===-5} />
+                                            <InfoRow2 label="Puerto" value={String(autodjGuide.dj_live.port)} onCopy={() => {navigator.clipboard.writeText(String(autodjGuide.dj_live.port)); setCopiedStep(-6); setTimeout(()=>setCopiedStep(null),2000);}} copied={copiedStep===-6} />
+                                            <InfoRow2 label="Mount" value={autodjGuide.dj_live.mount} onCopy={() => {navigator.clipboard.writeText(autodjGuide.dj_live.mount); setCopiedStep(-7); setTimeout(()=>setCopiedStep(null),2000);}} copied={copiedStep===-7} />
+                                            <InfoRow2 label="Password" value={autodjGuide.dj_live.password} onCopy={() => {navigator.clipboard.writeText(autodjGuide.dj_live.password); setCopiedStep(-8); setTimeout(()=>setCopiedStep(null),2000);}} copied={copiedStep===-8} />
+                                        </div>
+                                    )}
+
+                                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-2">
+                                        <h4 className="text-xs font-bold text-white mb-2">Instrucciones Paso a Paso</h4>
+                                        {autodjGuide.steps.map((step: string, idx: number) => (
+                                            <div key={idx} className="flex items-start gap-2 text-xs text-slate-400 py-1">
+                                                <span className="text-indigo-400 font-bold shrink-0">{idx+1}.</span>
+                                                <span className="flex-1">{step}</span>
+                                                <button onClick={() => {navigator.clipboard.writeText(step); setCopiedStep(idx); setTimeout(()=>setCopiedStep(null),2000);}}
+                                                    className="shrink-0 p-1 text-slate-600 hover:text-indigo-400 transition-colors">
+                                                    {copiedStep===idx ? <Check className="w-3 h-3 text-emerald-400"/> : <Copy className="w-3 h-3"/>}
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-center py-8 text-slate-500"><div className="animate-spin w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full mx-auto mb-2"></div> Cargando datos...</div>
+                            )
+                        )}
+
+                        {!showGuide && (
+                            <div className="p-6 rounded-xl border border-dashed border-slate-800 text-center space-y-3">
+                                <HelpCircle className="w-8 h-8 text-slate-700 mx-auto"/>
+                                <p className="text-xs text-slate-500">Haz clic en "Ver Guía de Conexión" para obtener instrucciones personalizadas con datos reales de tu servidor.</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -336,6 +566,20 @@ function PlayedSong({ title, time }: { title: string; time?: string }) {
             <div className="flex-1 min-w-0">
                 <span className="text-xs font-bold text-slate-300 truncate block">{title}</span>
                 {time && <span className="text-[9px] text-slate-500">{time}</span>}
+            </div>
+        </div>
+    );
+}
+
+function InfoRow2({ label, value, onCopy, copied }: { label: string; value: string; onCopy: () => void; copied: boolean }) {
+    return (
+        <div className="flex items-center justify-between py-1">
+            <span className="text-slate-500 shrink-0">{label}</span>
+            <div className="flex items-center gap-2">
+                <span className="font-mono text-slate-300">{value}</span>
+                <button onClick={onCopy} className="p-1 text-slate-600 hover:text-indigo-400 transition-colors">
+                    {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                </button>
             </div>
         </div>
     );

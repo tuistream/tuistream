@@ -118,6 +118,13 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard/station/{station}/widgets', [ClientStationController::class, 'widgetsAudio'])->name('client.station.widgets');
     Route::post('/dashboard/station/{station}/widgets/save', [ClientStationController::class, 'widgetsSave'])->name('client.station.widgets.save');
 
+    // Icecast Connection Settings
+    Route::get('/dashboard/station/{station}/icecast-connection', [ClientStationController::class, 'icecastConnectionGet'])->name('client.station.icecast-connection.get');
+    Route::post('/dashboard/station/{station}/icecast-connection', [ClientStationController::class, 'icecastConnectionSave'])->name('client.station.icecast-connection.save');
+
+    // AutoDJ Connection Guide
+    Route::get('/dashboard/station/{station}/autodj-connection', [ClientStationController::class, 'autodjConnectionInfo'])->name('client.station.autodj-connection');
+
     // Rutas para Streaming de Video (Canal TV)
     Route::get('/dashboard/canaltv/{station}', [ClientStationController::class, 'showVideo'])->name('client.canaltv.show');
     Route::get('/dashboard/canaltv/{station}/config', [ClientStationController::class, 'configVideo'])->name('client.canaltv.config');

@@ -1159,3 +1159,83 @@ class ClientStationController extends Controller
 
         return response()->json(['success' => true, 'message' => 'Widgets guardados correctamente.']);
     }
+
+    /* =========================================================================
+       ICECAST CONNECTION SETTINGS
+       ========================================================================= */
+
+    public function icecastConnectionGet(Station $station)
+    {
+        $this->ensureOwnership($station);
+        $prefix = "station_{$station->id}_icecast_";
+        return response()->json([
+            'server' => \App\Models\Setting::get($prefix . 'server', $station->server_domain ?? 'icecast'),
+            'port' => (int) \App\Models\Setting::get($prefix . 'port', $station->port),
+            'mount_point' => \App\Models\Setting::get($prefix . 'mount', '/radio.mp3'),
+            'source_password' => \App\Models\Setting::get($prefix . 'source_pass', $station->stream_key ?? ''),
+            'admin_password' => \App\Models\Setting::get($prefix . 'admin_pass', ''),
+        ]);
+    }
+
+    public function icecastConnectionSave(Request $request, Station $station)
+    {
+        $this->ensureOwnership($station);
+        $validated = $request->validate([
+            'server' => 'required|string|max:255',
+            'port' => 'required|integer|min:1|max:65535',
+            'mount_point' => 'required|string|max:255|starts_with:/',
+            'source_password' => 'required|string|min:4|max:128',
+            'admin_password' => 'required|string|min:4|max:128',
+        ]);
+
+        $prefix = "station_{$station->id}_icecast_";
+        \App\Models\Setting::set($prefix . 'server', $validated['server']);
+        \App\Models\Setting::set($prefix . 'port', (string) $validated['port']);
+        \App\Models\Setting::set($prefix . 'mount', $validated['mount_point']);
+        \App\Models\Setting::set($prefix . 'source_pass', $validated['source_password']);
+        \App\Models\Setting::set($prefix . 'admin_pass', $validated['admin_password']);
+
+        return response()->json(['success' => true, 'message' => 'Configuración de Icecast guardada correctamente.']);
+    }
+
+    /* =========================================================================
+       AUTODJ CONNECTION GUIDE
+       ========================================================================= */
+
+    public function autodjConnectionInfo(Station $station)
+    {
+        $this->ensureOwnership($station);
+        $domain = \App\Models\Setting::get('server_domain', request()->getHost());
+        $streamPass = \App\Models\Setting::get("station_{$station->id}_icecast_source_pass", $station->stream_key ?? 'tu_stream_key');
+
+        return response()->json([
+            'engine' => 'Liquidsoap 2.2.5',
+            'crossfade' => '2.5 segundos',
+            'mode' => 'Rotación aleatoria adaptativa',
+            'connection' => [
+                'type' => 'Icecast',
+                'host' => $domain,
+                'port' => $station->port,
+                'mount' => '/radio.mp3',
+                'source_password' => $streamPass,
+                'encoder' => 'MP3',
+                'bitrate' => $station->bitrate . ' kbps',
+            ],
+            'dj_live' => [
+                'host' => $domain,
+                'port' => $station->dj_port,
+                'mount' => '/live',
+                'password' => 'dj_' . $station->slug,
+                'protocol' => 'Icecast Source Client',
+            ],
+            'steps' => [
+                'Paso 1: Abre tu encoder (BUTT, Mixxx, OBS) y ve a la configuración de servidor.',
+                'Paso 2: Selecciona tipo de servidor "Icecast 2".',
+                "Paso 3: Ingresa Host: {$domain}, Puerto: {$station->port}, Mount: /radio.mp3.",
+                "Paso 4: Usa como Source Password: {$streamPass}.",
+                "Paso 5: Si quieres emitir como DJ en vivo, usa el mount /live con el puerto {$station->dj_port}.",
+                'Paso 6: Inicia la transmisión desde tu encoder. Si todo es correcto, tu stream estará online en segundos.',
+            ],
+        ]);
+    }
+}
