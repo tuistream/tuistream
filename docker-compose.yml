@@ -19,7 +19,7 @@ services:
       - DB_PORT=5432
       - DB_DATABASE=tuistream
       - DB_USERNAME=tuistream
-      - DB_PASSWORD=secret_password_123
+      - DB_PASSWORD=${DB_PASS:-secret_password_123}
       - REDIS_HOST=redis
     depends_on:
       - postgres
@@ -36,7 +36,7 @@ services:
     environment:
       POSTGRES_DB: tuistream
       POSTGRES_USER: tuistream
-      POSTGRES_PASSWORD: secret_password_123
+      POSTGRES_PASSWORD: ${DB_PASS:-secret_password_123}
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:

@@ -238,7 +238,7 @@ function ServicesSettings({ settings }: { settings: Record<string, string> }) {
                         {data.server_domain_type === 'domain' ? 'Dominio del Servidor' : 'IP del Servidor'}
                     </label>
                     <input type="text" value={data.server_domain} onChange={e => setData('server_domain', e.target.value)}
-                        placeholder={data.server_domain_type === 'domain' ? 'stream.tuistream.com' : '192.168.1.10'}
+                        placeholder={data.server_domain_type === 'domain' ? 'radio.midominio.com' : '192.168.1.10'}
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-indigo-500 transition-all text-slate-200"
                         required
                     />

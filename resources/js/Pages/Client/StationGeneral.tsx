@@ -181,14 +181,14 @@ export default function StationGeneral() {
                     <div className="p-5 space-y-3">
                         {isAudio ? (
                             <>
-                                <InfoRow label="Host" value="stream.tuistream.com" />
+                                <InfoRow label="Host" value={station.server_domain || window.location.hostname} />
                                 <InfoRow label="Puerto DJ" value={`${station.dj_port}`} />
                                 <InfoRow label="Mountpoint" value="/live" />
-                                <InfoRow label="Contraseña" value={`dj_pass_${station.slug}`} highlight />
+                                <InfoRow label="Contraseña" value={station.dj_password || `dj_${station.slug}`} highlight />
                             </>
                         ) : (
                             <>
-                                <InfoRow label="URL RTMP" value={`rtmp://stream.tuistream.com:${station.dj_port}/live`} />
+                                <InfoRow label="URL RTMP" value={`rtmp://${station.server_domain || window.location.hostname}:${station.dj_port}/live`} />
                                 <InfoRow label="Stream Key" value={station.stream_key} highlight />
                                 <InfoRow label="Puerto" value={`${station.port}`} />
                             </>

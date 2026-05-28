@@ -33,11 +33,13 @@ export default function AudioStationWidgets() {
 
     const iframeCode = `<iframe width="100%" height="150" src="${urls.public_page}" frameborder="0" scrolling="no" allow="autoplay"></iframe>`;
 
+    const domain = station.server_domain || window.location.hostname;
+
     const externalPlayers = [
-        { name: 'Winamp', icon: '🔊', url: `https://stream.tuistream.com:${station.port}/radio.pls` },
-        { name: 'VLC', icon: '▶️', url: `https://stream.tuistream.com:${station.port}/radio.xspf` },
-        { name: 'iTunes', icon: '🎵', url: `https://stream.tuistream.com:${station.port}/radio.m3u` },
-        { name: 'Windows Media Player', icon: '🎬', url: `https://stream.tuistream.com:${station.port}/radio.asx` },
+        { name: 'Winamp', icon: '🔊', url: `https://${domain}:${station.port}/radio.pls` },
+        { name: 'VLC', icon: '▶️', url: `https://${domain}:${station.port}/radio.xspf` },
+        { name: 'iTunes', icon: '🎵', url: `https://${domain}:${station.port}/radio.m3u` },
+        { name: 'Windows Media Player', icon: '🎬', url: `https://${domain}:${station.port}/radio.asx` },
     ];
 
     return (

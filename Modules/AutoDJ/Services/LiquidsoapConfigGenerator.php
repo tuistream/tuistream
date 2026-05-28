@@ -3,6 +3,7 @@
 namespace Modules\AutoDJ\Services;
 
 use Modules\Stations\Models\Station;
+use App\Models\Setting;
 
 class LiquidsoapConfigGenerator
 {
@@ -18,6 +19,7 @@ class LiquidsoapConfigGenerator
     {
         $slug = $station->slug;
         $bitrate = $station->bitrate;
+        $domain = Setting::get('server_domain', request()->getHost());
         
         // Rutas internas de los contenedores Docker
         $mediaPath = "/usr/share/liquidsoap/media";
@@ -34,7 +36,7 @@ output.shoutcast(
     port = 8000,
     password = "{$icecastSourcePassword}",
     name = "{$station->name} - TuiStream",
-    url = "http://{$slug}.tuistream.com",
+    url = "https://{$domain}",
     genre = "Mix",
     radio
 )
@@ -50,7 +52,7 @@ output.icecast(
     mount = "/radio.mp3",
     name = "{$station->name} - TuiStream",
     description = "Transmitido por TuiStream",
-    url = "http://{$slug}.tuistream.com",
+    url = "https://{$domain}",
     genre = "Mix",
     radio
 )

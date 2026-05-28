@@ -25,7 +25,7 @@ export default function AudioStationLogs() {
     const autodjLogs = `2026/05/27 13:50:09 [decoder:3] Audio format: mp3
 2026/05/27 13:50:10 [playlist:3] Loaded playlist "Rotación General" (14 tracks)
 2026/05/27 13:50:10 [autodj:3] Next track selected: "Antony Santos - Voy Pa'llá" (duration: 254s)
-2026/05/27 13:50:12 [output_icecast:3] Connection to stream.tuistream.com:8000/radio.mp3 succeeded!
+2026/05/27 13:50:12 [output_icecast:3] Connection to tu-server:8000/radio.mp3 succeeded!
 2026/05/27 13:50:12 [output_icecast:3] Now streaming: "Antony Santos - Voy Pa'llá"`;
 
     return (

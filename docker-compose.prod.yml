@@ -88,8 +88,8 @@ services:
     ports:
       - "8100:8000"
     environment:
-      - ICECAST_SOURCE_PASSWORD=${STREAM_PASS:-hackme}
-      - ICECAST_ADMIN_PASSWORD=${STREAM_PASS:-hackme}
+      - ICECAST_SOURCE_PASSWORD=${STREAM_PASS}
+      - ICECAST_ADMIN_PASSWORD=${STREAM_PASS}
     volumes:
       - ./docker/icecast/icecast.xml:/etc/icecast.xml:ro
     networks:

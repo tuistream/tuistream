@@ -10,25 +10,23 @@ class DatabaseSeeder extends Seeder
 {
     use WithoutModelEvents;
 
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
+        $defaultPass = env('SEED_ADMIN_PASSWORD', 'admin@123_tuistream');
+        $clientPass = env('SEED_CLIENT_PASSWORD', 'client@123_tuistream');
+
         User::factory()->create([
             'name' => 'TuiStream Admin',
-            'email' => 'admin@tuistream.com',
-            'password' => bcrypt('admin123'),
+            'email' => env('SEED_ADMIN_EMAIL', 'admin@localhost'),
+            'password' => bcrypt($defaultPass),
             'role' => 'super_admin',
         ]);
 
         User::factory()->create([
             'name' => 'Demo Cliente',
-            'email' => 'cliente@tuistream.com',
-            'password' => bcrypt('cliente123'),
+            'email' => env('SEED_CLIENT_EMAIL', 'cliente@localhost'),
+            'password' => bcrypt($clientPass),
             'role' => 'client',
         ]);
-
-        $this->call(EmailTemplateSeeder::class);
     }
 }

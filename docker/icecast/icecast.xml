@@ -10,38 +10,43 @@
     </limits>
 
     <authentication>
-        <!-- Source password for streams (e.g. from Liquidsoap or client encoders) -->
-        <source-password>hackme</source-password>
-        <!-- Relay password -->
-        <relay-password>hackme</relay-password>
-        <!-- Admin user credentials -->
+        <source-password>__STREAM_PASS__</source-password>
+        <relay-password>__STREAM_PASS__</relay-password>
         <admin-user>admin</admin-user>
-        <admin-password>hackme</admin-password>
+        <admin-password>__STREAM_PASS__</admin-password>
     </authentication>
 
     <hostname>localhost</hostname>
 
-    <!-- Ports and mount options -->
     <listen-socket>
         <port>8000</port>
     </listen-socket>
 
     <mount type="normal">
         <mount-name>/radio.mp3</mount-name>
-        <fallback-mount>/fallback.mp3</fallback-mount>
-        <fallback-override>1</fallback-override>
     </mount>
 
+    <mount type="normal">
+        <mount-name>/live</mount-name>
+    </mount>
+
+    <fileserve>1</fileserve>
+
     <paths>
+        <basedir>/usr/share/icecast</basedir>
         <logdir>/var/log/icecast</logdir>
-        <webroot>/usr/share/icecast2/web</webroot>
-        <adminroot>/usr/share/icecast2/admin</adminroot>
-        <alias source="/" destination="/status.xsl"/>
+        <webroot>/usr/share/icecast/web</webroot>
+        <adminroot>/usr/share/icecast/admin</adminroot>
+        <alias source="/" destination="/status-json.xsl"/>
     </paths>
 
     <logging>
         <accesslog>access.log</accesslog>
         <errorlog>error.log</errorlog>
-        <loglevel>3</loglevel> <!-- 3 is Info -->
+        <loglevel>3</loglevel>
     </logging>
+
+    <security>
+        <chroot>0</chroot>
+    </security>
 </icecast>

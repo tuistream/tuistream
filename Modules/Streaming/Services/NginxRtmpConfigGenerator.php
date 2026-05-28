@@ -35,11 +35,11 @@ class NginxRtmpConfigGenerator
     public function __construct(
         string $hlsBasePath  = '/var/hls',
         string $dashBasePath = '/var/dash',
-        string $panelUrl     = 'http://127.0.0.1:8000'
+        ?string $panelUrl    = null
     ) {
         $this->hlsBasePath  = $hlsBasePath;
         $this->dashBasePath = $dashBasePath;
-        $this->panelUrl     = $panelUrl;
+        $this->panelUrl     = $panelUrl ?? config('app.url', rtrim(env('APP_URL', 'http://localhost'), '/'));
     }
 
     /**

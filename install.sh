@@ -226,6 +226,13 @@ cmdout "Configurando Nginx con dominio ${DOMAIN}..."
 sed -i "s/__DOMAIN__/${DOMAIN}/g" docker/nginx-proxy/conf.d/default.conf
 info "Nginx configurado con dominio ${DOMAIN}"
 
+# Reemplazar placeholders de contraseñas en configs de streaming
+cmdout "Asegurando contraseñas de streaming..."
+sed -i "s/__STREAM_PASS__/${STREAM_PASS}/g" docker/icecast/icecast.xml
+sed -i "s/__STREAM_PASS__/${STREAM_PASS}/g" docker/shoutcast/sc_serv.conf
+sed -i "s/__STREAM_PASS__/${STREAM_PASS}/g" docker/liquidsoap/script.liq
+info "Contraseñas de streaming aseguradas"
+
 # Generar certificado SSL auto-firmado temporal (nginx necesita uno para arrancar)
 # Luego certbot lo reemplazará con Let's Encrypt real
 cmdout "Generando certificado SSL temporal para ${DOMAIN}..."

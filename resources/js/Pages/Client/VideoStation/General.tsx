@@ -90,8 +90,8 @@ export default function VideoStationGeneral() {
         ? Math.round((station.storage_used_mb / station.storage_limit_mb) * 100)
         : 0;
 
-    const domain = station.custom_domain ?? 'stream.tuistream.com';
-    const publicUrl = `http://${domain}:${station.port}/${station.slug}`;
+    const domain = station.server_domain || window.location.hostname;
+    const publicUrl = `https://${domain}:${station.port}/${station.slug}`;
     const iframeCode = `<iframe width="100%" height="480" src="${publicUrl}" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
 
     return (

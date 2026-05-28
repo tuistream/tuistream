@@ -14,5 +14,5 @@ radio = fallback([music, fallback_tone])
 # Stream directly to the Icecast container within the docker network
 output.icecast(%mp3,
   host="icecast", port=8000,
-  password="hackme", mount="/radio.mp3",
+  password="__STREAM_PASS__", mount="/radio.mp3",
   radio)
