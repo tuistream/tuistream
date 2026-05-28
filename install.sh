@@ -271,6 +271,23 @@ for i in $(seq 1 30); do
 done
 
 # Generar APP_KEY y ejecutar migraciones
+cmdout "Instalando dependencias PHP (composer)..."
+if docker exec tuistream_app test -f /var/www/vendor/autoload.php; then
+    info "vendor/ ya existe — omitiendo composer install"
+else
+    docker exec tuistream_app composer install --no-dev --optimize-autoloader --no-interaction
+    info "Dependencias PHP instaladas"
+fi
+
+cmdout "Compilando assets del frontend (npm)..."
+if docker exec tuistream_app test -f /var/www/public/build/manifest.json; then
+    info "Assets ya compilados — omitiendo npm build"
+else
+    docker exec tuistream_app npm install --no-audit --no-fund
+    docker exec tuistream_app npm run build
+    info "Frontend compilado"
+fi
+
 cmdout "Generando APP_KEY y ejecutando migraciones..."
 docker exec tuistream_app php artisan key:generate --force
 docker exec tuistream_app php artisan migrate --force
