@@ -834,6 +834,8 @@ class ClientStationController extends Controller
             'id' => $j->id,
             'name' => $j->name,
             'filename' => $j->filename,
+            'path' => $j->path,
+            'url' => asset('storage/' . $j->path),
             'duration' => $j->duration,
             'interval' => $j->interval,
             'is_active' => $j->is_active,
@@ -855,11 +857,16 @@ class ClientStationController extends Controller
         
         $duration = 0;
         try {
-            $getID3 = new \getID3();
-            $info = $getID3->analyze(storage_path("app/public/{$path}"));
-            $duration = (int) round($info['playtime_seconds'] ?? 0);
+            $fullPath = storage_path("app/public/{$path}");
+            $ffprobe = \Symfony\Component\Process\Process::fromShellCommandline(
+                'ffprobe -v error -show_entries format=duration -of csv=p=0 ' . escapeshellarg($fullPath)
+            );
+            $ffprobe->run();
+            if ($ffprobe->isSuccessful()) {
+                $duration = (int) round((float) trim($ffprobe->getOutput()));
+            }
         } catch (\Throwable $e) {
-            // fallback
+            // fallback to 0
         }
 
         $jingle = $station->jingles()->create([

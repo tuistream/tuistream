@@ -98,11 +98,12 @@ case "$PKG_MANAGER" in
         ;;
     yum)
         yum update -y -q
-        yum install -y -q curl wget git ca-certificates gnupg redhat-lsb-core
+        yum install -y epel-release -q
+        yum install -y -q curl wget git ca-certificates gnupg redhat-lsb-core ffmpeg
         ;;
     dnf)
         dnf update -y -q
-        dnf install -y -q curl wget git ca-certificates gnupg
+        dnf install -y -q curl wget git ca-certificates gnupg ffmpeg-free
         ;;
 esac
 info "Dependencias base instaladas"

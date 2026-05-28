@@ -12,7 +12,8 @@
         "laravel/octane": "^2.6",
         "laravel/reverb": "^1.4",
         "laravel/socialite": "^5.27",
-        "laravel/tinker": "^2.10"
+        "laravel/tinker": "^2.10",
+        "nwidart/laravel-modules": "*"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
@@ -57,7 +58,8 @@
         "sort-packages": true,
         "allow-plugins": {
             "pestphp/pest-plugin": true,
-            "php-http/discovery": true
+            "php-http/discovery": true,
+            "wikimedia/composer-merge-plugin": true
         }
     },
     "minimum-stability": "stable",
