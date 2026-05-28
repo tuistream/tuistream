@@ -1,6 +1,6 @@
 import { Head, useForm, usePage, router } from '@inertiajs/react';
 import { Settings, Save, Wrench, MonitorPlay, Images, Mail, Puzzle, BarChart3, Database, Code, MoreHorizontal, Server, AlertCircle } from 'lucide-react';
-import { FormEvent } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import AdminLayout from './Layout';
 
 interface PageProps {
@@ -862,18 +862,17 @@ function PluginsSettings({ settings }: { settings: Record<string, string> }) {
         liquidsoap_image: settings.liquidsoap_image || 'savonet/liquidsoap:v2.2.5',
         
         // Nginx RTMP official settings
-        nginx_rtmp_httpport: settings.nginx_rtmp_httpport || '19350',
-        nginx_rtmp_httpsport: settings.nginx_rtmp_httpsport || '19360',
+        nginx_rtmp_httpport: settings.nginx_rtmp_httpport || '80',
+        nginx_rtmp_rtmpport: settings.nginx_rtmp_rtmpport || '1935',
         nginx_rtmp_transcoder_preset: settings.nginx_rtmp_transcoder_preset || 'ultrafast',
         nginx_rtmp_log_output: settings.nginx_rtmp_log_output || 'No',
 
         // Icecast 2 KH official settings
-        icecast_os: settings.icecast_os || '*nix',
-        icecast_executable: settings.icecast_executable || '/usr/local/tuisream/icecastkh/bin/icecast',
-        icecast_share_path: settings.icecast_share_path || '/usr/local/tuisream/icecastkh/share/icecast',
+        icecast_executable: settings.icecast_executable || '/usr/bin/icecast',
+        icecast_share_path: settings.icecast_share_path || '/usr/share/icecast',
+        icecast_admin_user: settings.icecast_admin_user || 'admin',
 
         // Shoutcast 2 official settings
-        shoutcast_os: settings.shoutcast_os || 'linux64',
         shoutcast_default_version: settings.shoutcast_default_version || '2.6+',
 
         // Liquidsoap official settings
@@ -898,13 +897,12 @@ function PluginsSettings({ settings }: { settings: Record<string, string> }) {
                 shoutcast_image: data.shoutcast_image,
                 liquidsoap_image: data.liquidsoap_image,
                 nginx_rtmp_httpport: data.nginx_rtmp_httpport,
-                nginx_rtmp_httpsport: data.nginx_rtmp_httpsport,
+                nginx_rtmp_rtmpport: data.nginx_rtmp_rtmpport,
                 nginx_rtmp_transcoder_preset: data.nginx_rtmp_transcoder_preset,
                 nginx_rtmp_log_output: data.nginx_rtmp_log_output,
-                icecast_os: data.icecast_os,
                 icecast_executable: data.icecast_executable,
                 icecast_share_path: data.icecast_share_path,
-                shoutcast_os: data.shoutcast_os,
+                icecast_admin_user: data.icecast_admin_user,
                 shoutcast_default_version: data.shoutcast_default_version,
                 liquidsoap_performance: data.liquidsoap_performance,
                 liquidsoap_aac_encoder: data.liquidsoap_aac_encoder,
@@ -953,18 +951,19 @@ function PluginsSettings({ settings }: { settings: Record<string, string> }) {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">HTTP Port</label>
+                                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">HTTP Stat Port</label>
                                     <input type="number" value={data.nginx_rtmp_httpport} onChange={e => setData('nginx_rtmp_httpport', e.target.value)}
                                         className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500 transition-all text-slate-200 font-mono"
-                                        placeholder="19350"
+                                        placeholder="80"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">HTTPS Port</label>
-                                    <input type="number" value={data.nginx_rtmp_httpsport} onChange={e => setData('nginx_rtmp_httpsport', e.target.value)}
+                                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">RTMP Port</label>
+                                    <input type="number" value={data.nginx_rtmp_rtmpport} onChange={e => setData('nginx_rtmp_rtmpport', e.target.value)}
                                         className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500 transition-all text-slate-200 font-mono"
-                                        placeholder="19360"
+                                        placeholder="1935"
                                     />
+                                    <p className="text-[9px] text-slate-500 mt-1">Puerto RTMP para ingest de video. OBS/encoders usan este puerto.</p>
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Transcoder Preset Default</label>
@@ -1016,22 +1015,19 @@ function PluginsSettings({ settings }: { settings: Record<string, string> }) {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Operating System</label>
-                                    <select value={data.icecast_os} onChange={e => setData('icecast_os', e.target.value)}
+                                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Admin User</label>
+                                    <input type="text" value={data.icecast_admin_user} onChange={e => setData('icecast_admin_user', e.target.value)}
                                         className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500 transition-all text-slate-200"
-                                    >
-                                        <option value="*nix">*nix (Linux / Unix)</option>
-                                        <option value="Linux">Linux Native</option>
-                                        <option value="Windows">Windows</option>
-                                    </select>
-                                    <p className="text-[9px] text-slate-500 mt-1">Please select your operating system.</p>
+                                        placeholder="admin"
+                                    />
+                                    <p className="text-[9px] text-slate-500 mt-1">Usuario administrador del panel Icecast.</p>
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Executable (Ruta)</label>
                                     <input type="text" value={data.icecast_executable} onChange={e => setData('icecast_executable', e.target.value)}
                                         className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500 transition-all text-slate-200 font-mono"
                                     />
-                                    <p className="text-[9px] text-slate-500 mt-1">Ruta absoluta del binario ejecutable de Icecast.</p>
+                                    <p className="text-[9px] text-slate-500 mt-1">Ruta al binario de Icecast dentro del contenedor Docker.</p>
                                 </div>
                                 <div className="md:col-span-2">
                                     <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Icecast Share Path</label>
@@ -1071,17 +1067,6 @@ function PluginsSettings({ settings }: { settings: Record<string, string> }) {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Operating System</label>
-                                    <select value={data.shoutcast_os} onChange={e => setData('shoutcast_os', e.target.value)}
-                                        className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500 transition-all text-slate-200"
-                                    >
-                                        <option value="linux64">linux64 (64-bit Architecture)</option>
-                                        <option value="Linux">Linux standard</option>
-                                        <option value="Windows">Windows</option>
-                                    </select>
-                                    <p className="text-[9px] text-slate-500 mt-1">Please select your operating system.</p>
-                                </div>
-                                <div>
                                     <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Default Version for New Services</label>
                                     <select value={data.shoutcast_default_version} onChange={e => setData('shoutcast_default_version', e.target.value)}
                                         className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500 transition-all text-slate-200"
@@ -1089,12 +1074,13 @@ function PluginsSettings({ settings }: { settings: Record<string, string> }) {
                                         <option value="2.6+">2.6+</option>
                                         <option value="2.5+">2.5+</option>
                                     </select>
-                                    <p className="text-[9px] text-slate-500 mt-1">Configure the version of Shoutcast 2 to use.</p>
+                                    <p className="text-[9px] text-slate-500 mt-1">Versión de Shoutcast a usar para nuevos servicios.</p>
                                 </div>
                                 <div className="md:col-span-2 p-3 bg-slate-950 border border-slate-900 rounded-xl space-y-1.5 text-[10px] text-slate-400 select-none">
-                                    <p className="font-semibold text-white">Guía de Versiones:</p>
-                                    <p>• <strong className="text-indigo-400">2.6+</strong> — Latest version, supports SSL - Free version limits mp3 to 128Kbps.</p>
-                                    <p>• <strong className="text-pink-400">2.5.x</strong> — Deprecated, does not support native SSL however has no mp3 limit.</p>
+                                    <p className="font-semibold text-white">Información del Contenedor Docker:</p>
+                                    <p>• <strong className="text-indigo-400">Imagen:</strong> khartool/shoutcast-x64 (Alpine Linux)</p>
+                                    <p>• <strong className="text-pink-400">Puerto interno:</strong> 8000 — Puerto externo: 8005</p>
+                                    <p>• <strong className="text-emerald-400">Config:</strong> /opt/shoutcast/sc_serv.conf</p>
                                 </div>
                             </div>
                         )}
@@ -1203,6 +1189,196 @@ function PluginsSettings({ settings }: { settings: Record<string, string> }) {
     );
 }
 
+function BackupsSettings({ settings }: { settings: Record<string, string> }) {
+    const [backups, setBackups] = useState<Array<{ name: string; size: string; size_mb: number; created_at: string }>>([]);
+    const [loading, setLoading] = useState(true);
+    const [creating, setCreating] = useState(false);
+    const [deleting, setDeleting] = useState<string | null>(null);
+    const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+    const loadBackups = () => {
+        setLoading(true);
+        fetch('/admin/api/backups', {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        })
+            .then(r => r.json())
+            .then(data => setBackups(data.backups || []))
+            .catch(() => setMessage({ type: 'error', text: 'Error al cargar backups' }))
+            .finally(() => setLoading(false));
+    };
+
+    useEffect(() => {
+        loadBackups();
+    }, []);
+
+    const createBackup = () => {
+        setCreating(true);
+        setMessage(null);
+        fetch('/admin/api/backups/create', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+                'Content-Type': 'application/json',
+            },
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    setMessage({ type: 'success', text: data.message });
+                    loadBackups();
+                } else {
+                    setMessage({ type: 'error', text: data.message });
+                }
+            })
+            .catch(() => setMessage({ type: 'error', text: 'Error al crear backup' }))
+            .finally(() => setCreating(false));
+    };
+
+    const deleteBackup = (name: string) => {
+        if (!confirm(`¿Eliminar el backup "${name}"?`)) return;
+        setDeleting(name);
+        setMessage(null);
+        fetch('/admin/api/backups/delete', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ name }),
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    setMessage({ type: 'success', text: data.message });
+                    loadBackups();
+                } else {
+                    setMessage({ type: 'error', text: data.error || 'Error al eliminar' });
+                }
+            })
+            .catch(() => setMessage({ type: 'error', text: 'Error al eliminar backup' }))
+            .finally(() => setDeleting(null));
+    };
+
+    const downloadBackup = (name: string) => {
+        window.open(`/admin/api/backups/download?name=${encodeURIComponent(name)}`, '_blank');
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="border-b border-slate-900 pb-2 flex items-center justify-between">
+                <div>
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider">Backups del Sistema</h3>
+                    <p className="text-xs text-slate-500 mt-1">Crea, descarga y gestiona copias de seguridad de la base de datos y archivos.</p>
+                </div>
+                <button
+                    onClick={createBackup}
+                    disabled={creating}
+                    className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-2"
+                >
+                    <Save className="w-3.5 h-3.5" />
+                    {creating ? 'Creando...' : 'Crear Backup Ahora'}
+                </button>
+            </div>
+
+            {message && (
+                <div className={`p-4 rounded-xl text-sm flex items-center gap-2 ${
+                    message.type === 'success'
+                        ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+                        : 'bg-red-500/10 border border-red-500/20 text-red-400'
+                }`}>
+                    <span className={`w-2 h-2 rounded-full ${message.type === 'success' ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                    {message.text}
+                </div>
+            )}
+
+            <div className="p-5 rounded-2xl border border-slate-900 bg-slate-950/40">
+                <div className="flex items-center justify-between border-b border-slate-900 pb-3 mb-4">
+                    <div>
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">Copias de Seguridad</h4>
+                        <p className="text-[10px] text-slate-500 mt-0.5">Se conservan las últimas 10 copias. Las más antiguas se eliminan automáticamente.</p>
+                    </div>
+                    <span className="text-[10px] text-slate-500">{backups.length} backup(s)</span>
+                </div>
+
+                {loading ? (
+                    <div className="text-center py-8 text-slate-500 text-sm">Cargando backups...</div>
+                ) : backups.length === 0 ? (
+                    <div className="text-center py-12 text-slate-500">
+                        <Database className="w-10 h-10 mx-auto mb-3 text-slate-600" />
+                        <p className="text-sm">No hay backups creados aún.</p>
+                        <p className="text-[10px] mt-1 text-slate-600">Haz clic en "Crear Backup Ahora" para generar tu primera copia de seguridad.</p>
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                            <thead>
+                                <tr className="border-b border-slate-900">
+                                    <th className="text-left py-2 text-slate-500 font-semibold uppercase tracking-wider">Archivo</th>
+                                    <th className="text-left py-2 text-slate-500 font-semibold uppercase tracking-wider">Tamaño</th>
+                                    <th className="text-left py-2 text-slate-500 font-semibold uppercase tracking-wider">Fecha</th>
+                                    <th className="text-right py-2 text-slate-500 font-semibold uppercase tracking-wider">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {backups.map(backup => (
+                                    <tr key={backup.name} className="border-b border-slate-900/50 hover:bg-slate-900/30 transition-colors">
+                                        <td className="py-3 font-mono text-slate-300">{backup.name}</td>
+                                        <td className="py-3 text-slate-400">{backup.size}</td>
+                                        <td className="py-3 text-slate-400">{backup.created_at}</td>
+                                        <td className="py-3 text-right">
+                                            <div className="flex items-center justify-end gap-2">
+                                                <button
+                                                    onClick={() => downloadBackup(backup.name)}
+                                                    className="px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg text-[10px] font-bold hover:bg-emerald-500/20 transition-all"
+                                                >
+                                                    Descargar
+                                                </button>
+                                                <button
+                                                    onClick={() => deleteBackup(backup.name)}
+                                                    disabled={deleting === backup.name}
+                                                    className="px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg text-[10px] font-bold hover:bg-red-500/20 disabled:opacity-50 transition-all"
+                                                >
+                                                    {deleting === backup.name ? '...' : 'Eliminar'}
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
+            <div className="p-5 rounded-2xl border border-slate-900 bg-slate-950/40 space-y-3">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Información</h4>
+                <ul className="space-y-2 text-[11px] text-slate-400">
+                    <li className="flex items-start gap-2">
+                        <span className="text-indigo-400 mt-0.5">•</span>
+                        Cada backup incluye: base de datos completa (PostgreSQL) + archivos de storage (uploads, estaciones).
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-indigo-400 mt-0.5">•</span>
+                        Los backups se almacenan en <code className="text-[10px] bg-slate-900 px-1.5 py-0.5 rounded text-slate-300">storage/app/backups/</code> dentro del contenedor.
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-indigo-400 mt-0.5">•</span>
+                        Se recomienda descargar los backups periódicamente a un lugar externo al servidor.
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="text-indigo-400 mt-0.5">•</span>
+                        Para restaurar, extrae el ZIP y vuelca el SQL en PostgreSQL, luego copia los archivos de storage.
+                    </li>
+                </ul>
+            </div>
+        </div>
+    );
+}
+
 export default function SettingsPage() {
     const { activeSection, settings, sections, flash } = usePage<any>().props as PageProps;
 
@@ -1217,7 +1393,7 @@ export default function SettingsPage() {
             case 'video_players': return <VideoPlayersSettings settings={settings} />;
             case 'albums': return <AlbumsSettings settings={settings} />;
             case 'plugins': return <PluginsSettings settings={settings} />;
-            case 'backups': return <PlaceholderSection title="Backups" description="Copias de seguridad automáticas del sistema." />;
+            case 'backups': return <BackupsSettings settings={settings} />;
             default: return <GeneralSettings settings={settings} />;
         }
     };

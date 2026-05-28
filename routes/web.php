@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\AdminBackupController;
 use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AdminFeatureController;
 use App\Http\Controllers\AdminSettingsController;
@@ -158,6 +159,12 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
     // Ajustes
     Route::get('/settings/{section?}', [AdminSettingsController::class, 'index'])->name('admin.settings');
     Route::post('/settings', [AdminSettingsController::class, 'update'])->name('admin.settings.update');
+
+    // Backups
+    Route::get('/api/backups', [AdminBackupController::class, 'list'])->name('admin.backups.list');
+    Route::post('/api/backups/create', [AdminBackupController::class, 'create'])->name('admin.backups.create');
+    Route::get('/api/backups/download', [AdminBackupController::class, 'download'])->name('admin.backups.download');
+    Route::post('/api/backups/delete', [AdminBackupController::class, 'delete'])->name('admin.backups.delete');
 
     // Plantillas de Email
     Route::get('/email-templates', [AdminEmailTemplateController::class, 'index'])->name('admin.email-templates');
