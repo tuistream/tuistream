@@ -15,9 +15,9 @@ return new class extends Migration
             $table->id();
             $table->foreignId('station_id')->constrained('stations')->onDelete('cascade');
             $table->string('name');
-            $table->enum('type', ['general', 'scheduled', 'jingle', 'advanced'])->default('general');
+            $table->enum('type', ['standard', 'scheduled', 'weighted', 'general', 'jingle'])->default('standard');
             $table->boolean('is_active')->default(true);
-            $table->enum('play_mode', ['random', 'sequential'])->default('random');
+            $table->enum('play_mode', ['random', 'sequential', 'shuffle'])->default('sequential');
             $table->time('schedule_start')->nullable();
             $table->time('schedule_end')->nullable();
             $table->integer('weight')->default(5); // Prioridad/peso para reproducir canciones (1-10)
