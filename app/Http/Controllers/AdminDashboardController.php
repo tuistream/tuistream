@@ -665,11 +665,12 @@ class AdminDashboardController extends Controller
             'admin_password'     => ['nullable', 'string', 'max:255'],
             'mountpoints'        => ['required', 'integer', 'min:1', 'max:100'],
             'autodj_sources'     => ['required', 'integer', 'min:0', 'max:100'],
-            'bitrate'            => ['required', 'integer', 'min:256', 'max:99999'],
+            'bitrate'            => ['required', 'integer', 'in:64,96,128,192,256,320'],
             'max_listeners'      => ['required', 'integer', 'min:10', 'max:10000'],
             'disk_space_limit'   => ['required', 'integer', 'min:-1'],
             'data_transfer_limit'=> ['required', 'integer', 'min:-1'],
             'autodj_service'     => ['required', 'string', 'in:liquidsoap,none'],
+            'autodj_enabled'     => ['sometimes', 'boolean'],
         ]);
 
         $adminPassword = !empty($validated['admin_password'])
@@ -699,6 +700,7 @@ class AdminDashboardController extends Controller
             'data_transfer_limit' => $validated['data_transfer_limit'],
             'status'              => 'offline',
             'is_active'           => true,
+            'autodj_enabled'      => $request->boolean('autodj_enabled', true),
         ]);
 
         $this->orchestrator->setup($station);

@@ -20,6 +20,7 @@ class Station extends Model
         'backend',
         'frontend',
         'autodj_service',
+        'autodj_enabled',
         'port',
         'status',
         'is_active',

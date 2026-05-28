@@ -1,7 +1,8 @@
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
+import { useEffect } from 'react';
 import {
     Music, ArrowLeft, Save, User, Server, Zap, HardDrive,
-    Key, Mic, Layers, Radio, RefreshCw
+    Key, Mic, Layers, Radio, RefreshCw, ToggleLeft, ToggleRight
 } from 'lucide-react';
 import AdminLayout from './Layout';
 
@@ -38,6 +39,8 @@ const AUTODJ_SERVICES = [
 export default function AudioStationCreate() {
     const { clients, next_port } = usePage<any>().props as PageProps;
 
+    const BITRATES = [64, 96, 128, 192, 256, 320];
+
     const { data, setData, post, processing, errors } = useForm({
         client_id:          '',
         station_name:       '',
@@ -46,15 +49,28 @@ export default function AudioStationCreate() {
         port:               next_port || 8000,
         admin_password:     '',
         mountpoints:        1,
-        autodj_sources:     1,       // 0 = unlimited
+        autodj_sources:     1,
         bitrate:            128,
         max_listeners:      100,
-        disk_space_limit:   -1,      // -1 = unlimited
-        data_transfer_limit: -1,     // -1 = unlimited
+        disk_space_limit:   -1,
+        data_transfer_limit: -1,
         disk_space_mb:      10240,
         data_transfer_mb:   51200,
         autodj_service:     'liquidsoap',
+        autodj_enabled:     true,
     });
+
+    // Auto-generar mount basado en el frontend seleccionado
+    useEffect(() => {
+        if (!data.publish_name || data.publish_name === '/stream' || data.publish_name === '/radio.mp3') {
+            const defaultMounts: Record<string, string> = {
+                icecast_kh: '/radio.mp3',
+                icecast:    '/radio.mp3',
+                shoutcast:  '/stream',
+            };
+            setData('publish_name', defaultMounts[data.frontend] || '/radio.mp3');
+        }
+    }, [data.frontend]);
 
     const generatePassword = () => {
         const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#$!';
@@ -122,12 +138,18 @@ export default function AudioStationCreate() {
 
                             {/* Publish name / mount */}
                             <div>
-                                <label className={labelClass}>Publish Name <span className="text-slate-600 normal-case font-normal">(mount)</span></label>
+                                <label className={labelClass}>
+                                    Mount Point
+                                    <span className="text-slate-600 normal-case font-normal ml-1">(auto, editable)</span>
+                                </label>
                                 <div className="relative">
                                     <input type="text" value={data.publish_name} onChange={e => setData('publish_name', e.target.value)}
-                                        placeholder="/stream" className={inputClass + ' pl-10 font-mono'} />
+                                        placeholder="/radio.mp3" className={inputClass + ' pl-10 font-mono'} />
                                     <Mic className="absolute left-3.5 top-3 w-3.5 h-3.5 text-slate-600" />
                                 </div>
+                                <p className="text-[9px] text-slate-600 mt-1">
+                                    Se genera automáticamente según el Media Server. Puedes editarlo libremente.
+                                </p>
                                 {errors.publish_name && <p className={errorClass}>{errors.publish_name}</p>}
                             </div>
                         </div>
@@ -179,9 +201,15 @@ export default function AudioStationCreate() {
                             {/* Bitrate */}
                             <div>
                                 <label className={labelClass}>Bitrate (Kbps) <span className="text-red-400">*</span></label>
-                                <input type="number" min={256} max={99999} value={data.bitrate}
-                                    onChange={e => setData('bitrate', parseInt(e.target.value))}
-                                    placeholder="256 – 99999 Kbps" className={inputClass} required />
+                                <div className="relative">
+                                    <select value={data.bitrate} onChange={e => setData('bitrate', parseInt(e.target.value))}
+                                        className={selectClass}>
+                                        {BITRATES.map(b => (
+                                            <option key={b} value={b}>{b} Kbps</option>
+                                        ))}
+                                    </select>
+                                    <Radio className="absolute right-3.5 top-3 w-3.5 h-3.5 text-slate-600 pointer-events-none" />
+                                </div>
                                 {errors.bitrate && <p className={errorClass}>{errors.bitrate}</p>}
                             </div>
 
@@ -300,29 +328,55 @@ export default function AudioStationCreate() {
                     </div>
                 </div>
 
-                {/* ─── AUTODJ SERVICE ───────────────────────────────── */}
+                {/* ─── AUTODJ CONFIGURATION ────────────────────────────── */}
                 <div className="rounded-2xl border border-slate-900 bg-slate-900/20 backdrop-blur-sm p-6 relative overflow-hidden">
                     <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-indigo-500/30 to-transparent" />
-                    <SectionTitle icon={Zap}>AutoDJ Service</SectionTitle>
+                    <SectionTitle icon={Zap}>Configuración AutoDJ</SectionTitle>
 
-                    <div className="flex flex-wrap gap-3">
-                        {AUTODJ_SERVICES.map(s => (
-                            <button key={s.value} type="button"
-                                onClick={() => setData('autodj_service', s.value)}
-                                className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 ${
-                                    data.autodj_service === s.value
-                                        ? 'bg-indigo-500 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
-                                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-indigo-500/40 hover:text-indigo-400'
-                                }`}
-                            >
-                                <Layers className="w-3.5 h-3.5" />
-                                {s.label}
-                            </button>
-                        ))}
+                    {/* Toggle AutoDJ On/Off */}
+                    <div className="flex items-center justify-between p-4 rounded-xl bg-slate-950 border border-slate-800 mb-5">
+                        <div>
+                            <p className="text-xs font-bold text-slate-300">Reproducción Automática</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">AutoDJ reproduce automáticamente tu playlist cuando ningún DJ está conectado.</p>
+                        </div>
+                        <button type="button" onClick={() => setData('autodj_enabled', !data.autodj_enabled)}
+                            className={`shrink-0 transition-all ${data.autodj_enabled ? 'text-emerald-400' : 'text-slate-600'}`}>
+                            {data.autodj_enabled ? <ToggleRight className="w-8 h-8" /> : <ToggleLeft className="w-8 h-8" />}
+                        </button>
                     </div>
-                    <p className="text-[10px] text-slate-600 mt-3">
-                        Liquidsoap es el motor AutoDJ recomendado para gestión de playlists, jingles y programación.
-                    </p>
+
+                    {data.autodj_enabled && (
+                        <>
+                            {/* AutoDJ Service selector */}
+                            <div className="mb-4">
+                                <label className={labelClass}>Motor AutoDJ</label>
+                                <div className="flex flex-wrap gap-3">
+                                    {AUTODJ_SERVICES.map(s => (
+                                        <button key={s.value} type="button"
+                                            onClick={() => setData('autodj_service', s.value)}
+                                            className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 ${
+                                                data.autodj_service === s.value
+                                                    ? 'bg-indigo-500 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
+                                                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-indigo-500/40 hover:text-indigo-400'
+                                            }`}
+                                        >
+                                            <Layers className="w-3.5 h-3.5" />
+                                            {s.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <p className="text-[10px] text-slate-600">
+                                Liquidsoap es el motor AutoDJ recomendado para gestión de playlists, jingles y programación. Sin AutoDJ, la estación solo transmitirá cuando un DJ envíe una señal externa.
+                            </p>
+                        </>
+                    )}
+
+                    {!data.autodj_enabled && (
+                        <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/15 text-[10px] text-amber-400">
+                            AutoDJ desactivado. La estación no reproducirá audio automáticamente. Solo transmitirá cuando un DJ externo envíe una señal al servidor.
+                        </div>
+                    )}
                 </div>
 
                 {/* ─── SUBMIT ───────────────────────────────────────── */}
