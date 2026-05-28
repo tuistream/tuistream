@@ -11,8 +11,8 @@ return new class extends Migration
         Schema::table('stations', function (Blueprint $table) {
             $table->enum('service_type', ['live_streaming', 'stream_relay', 'tv_station'])->default('live_streaming')->after('type');
             $table->string('ftp_password')->nullable()->after('stream_key');
-            $table->string('transcoder_profile')->default('source')->after('bitrate');
-            $table->integer('stream_targets_limit')->default(-1)->after('transcoder_profile'); // -1 = unlimited
+            $table->json('transcoder_profiles')->nullable()->after('bitrate');
+            $table->integer('stream_targets_limit')->default(-1)->after('transcoder_profiles');
             $table->json('stream_targets')->nullable()->after('stream_targets_limit');
             $table->boolean('geoip_locking')->default(false)->after('stream_targets');
             $table->boolean('ndvr_rewind')->default(false)->after('geoip_locking');
