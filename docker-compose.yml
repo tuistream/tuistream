@@ -78,7 +78,7 @@ services:
       - tuistream_net
 
   shoutcast:
-    image: mabene/shoutcast:latest
+    image: khartool/shoutcast-x64:2.6.1.777-3.19.1
     container_name: tuistream_shoutcast
     restart: unless-stopped
     ports:

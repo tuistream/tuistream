@@ -161,7 +161,7 @@ class AdminDashboardController extends Controller
                     if ($fp) {
                         fclose($fp);
                         $shoutcastInstalled = true;
-                        $shoutcastVersion = 'Docker mabene/shoutcast (Online)';
+                        $shoutcastVersion = 'Docker khartool/shoutcast-x64 (Online)';
                     }
                 }
             }

@@ -60,7 +60,7 @@ version: '3.8'
 
 services:
   shoutcast:
-    image: mabene/shoutcast:latest
+    image: khartool/shoutcast-x64:2.6.1.777-3.19.1
     container_name: tuistream_station_{$slug}_shoutcast
     restart: unless-stopped
     ports:

@@ -858,7 +858,7 @@ function PluginsSettings({ settings }: { settings: Record<string, string> }) {
         autodj_service_liquidsoap: settings.autodj_service_liquidsoap === '1',
         nginx_rtmp_image: settings.nginx_rtmp_image || 'tiangolo/nginx-rtmp:latest',
         icecast_image: settings.icecast_image || 'libretime/icecast:2.5.0',
-        shoutcast_image: settings.shoutcast_image || 'mabene/shoutcast:latest',
+        shoutcast_image: settings.shoutcast_image || 'khartool/shoutcast-x64:2.6.1.777-3.19.1',
         liquidsoap_image: settings.liquidsoap_image || 'savonet/liquidsoap:v2.2.5',
         
         // Nginx RTMP official settings
