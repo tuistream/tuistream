@@ -1,6 +1,5 @@
 FROM php:8.4-cli-alpine
 
-# Instalar dependencias del sistema y herramientas de compilación
 RUN apk add --no-cache \
     curl \
     git \
@@ -11,18 +10,17 @@ RUN apk add --no-cache \
     linux-headers \
     python3 \
     py3-pip \
-    ffmpeg
+    ffmpeg \
+    postgresql-dev
 
-# Instalar yt-dlp (YouTube Downloader)
 RUN pip3 install --no-cache-dir yt-dlp --break-system-packages
 
-# Añadir instalador de extensiones PHP (muy robusto y automático)
+RUN docker-php-ext-install pdo_pgsql
+
 ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
 
-# Instalar extensiones de PHP necesarias para Laravel, Redis y Swoole
 RUN chmod +x /usr/local/bin/install-php-extensions && \
     install-php-extensions \
-    pdo_pgsql \
     zip \
     bcmath \
     gd \
