@@ -1,10 +1,11 @@
 import { Link, router, usePage } from '@inertiajs/react';
 import {
     Video, Power, RefreshCw, LogOut, ArrowLeft, Shield,
-    Info, Settings, Link2, Globe, BarChart3, Lock, Trash2, Menu, X, Youtube
+    Info, Settings, Link2, Globe, BarChart3, Lock, Trash2, Menu, X, Youtube,
+    FolderOpen, Calendar
 } from 'lucide-react';
 import ThemeToggle from '@/Components/ThemeToggle';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 
 interface StationMini {
     id: number;
@@ -12,6 +13,7 @@ interface StationMini {
     type: 'audio' | 'video';
     status: string;
     port: number;
+    service_type?: string;
 }
 
 interface PageProps {
@@ -31,7 +33,7 @@ interface PageProps {
     };
 }
 
-const menuItems = [
+const baseMenuItems = [
     { label: 'Información general', icon: Info, route: 'show', slug: '' },
     { label: 'Configurar', icon: Settings, route: 'config', slug: '/config' },
     { label: 'Widgets y enlaces', icon: Link2, route: 'widgets', slug: '/widgets' },
@@ -39,12 +41,25 @@ const menuItems = [
     { label: 'Informes', icon: BarChart3, route: 'reports', slug: '/reports' },
 ];
 
+const tvStationMenuItems = [
+    { label: 'Información general', icon: Info, route: 'show', slug: '' },
+    { label: 'Configurar', icon: Settings, route: 'config', slug: '/config' },
+    { label: 'Medios', icon: FolderOpen, route: 'media', slug: '/media' },
+    { label: 'Programación TV', icon: Calendar, route: 'schedule', slug: '/schedule' },
+    { label: 'Widgets y enlaces', icon: Link2, route: 'widgets', slug: '/widgets' },
+    { label: 'Página pública', icon: Globe, route: 'public', slug: '/public' },
+    { label: 'Informes', icon: BarChart3, route: 'reports', slug: '/reports' },
+];
+
 export default function VideoStationLayout({ children, currentSection = 'show' }: {
     children: React.ReactNode;
-    currentSection?: string;
+    currentSection?: 'show' | 'config' | 'widgets' | 'public' | 'reports' | 'media' | 'schedule' | 'youtube' | 'web-player';
 }) {
     const { station, isImpersonating, auth, app } = usePage<any>().props as PageProps;
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+    const isTvStation = station.service_type === 'tv_station';
+    const menuItems = useMemo(() => isTvStation ? tvStationMenuItems : baseMenuItems, [isTvStation]);
 
     const handleToggle = () => {
         router.post(`/dashboard/canaltv/${station.id}/toggle`);
@@ -201,33 +216,24 @@ export default function VideoStationLayout({ children, currentSection = 'show' }
                         );
                     })}
 
-                    <div className="pt-4 mt-4 border-t border-slate-900/50">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2 px-3">Herramientas</span>
-                        <div className="space-y-0.5">
-                            <Link
-                                href={`/dashboard/station/${station.id}/youtube-downloader`}
-                                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-                                    currentSection === 'youtube'
-                                        ? 'bg-pink-500/10 border border-pink-500/20 text-pink-400 font-bold'
-                                        : 'text-slate-400 hover:text-white hover:bg-slate-900/50'
-                                }`}
-                            >
-                                <Youtube className="w-4 h-4 shrink-0" />
-                                YouTube DL
-                            </Link>
-                            <Link
-                                href={`/dashboard/station/${station.id}/web-player`}
-                                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-                                    currentSection === 'web-player'
-                                        ? 'bg-pink-500/10 border border-pink-500/20 text-pink-400 font-bold'
-                                        : 'text-slate-400 hover:text-white hover:bg-slate-900/50'
-                                }`}
-                            >
-                                <Globe className="w-4 h-4 shrink-0" />
-                                Web Player
-                            </Link>
+                    {isTvStation && (
+                        <div className="pt-4 mt-4 border-t border-slate-900/50">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2 px-3">Herramientas</span>
+                            <div className="space-y-0.5">
+                                <Link
+                                    href={`/dashboard/canaltv/${station.id}/media`}
+                                    className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                                        currentSection === 'media'
+                                            ? 'bg-pink-500/10 border border-pink-500/20 text-pink-400 font-bold'
+                                            : 'text-slate-400 hover:text-white hover:bg-slate-900/50'
+                                    }`}
+                                >
+                                    <Youtube className="w-4 h-4 shrink-0" />
+                                    YouTube DL
+                                </Link>
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     <div className="pt-3 border-t border-slate-900/50 mt-3 space-y-0.5">
                         <Link

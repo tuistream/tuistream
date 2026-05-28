@@ -1258,4 +1258,178 @@ class ClientStationController extends Controller
             ],
         ]);
     }
+
+    /* =========================================================================
+       VIDEO STATION — Inertia Pages
+       ========================================================================= */
+
+    public function videoMediaPage(Station $station)
+    {
+        $this->ensureOwnership($station);
+        return Inertia::render('Client/VideoStation/Media', [
+            'station' => $this->getCommonStationData($station),
+        ]);
+    }
+
+    public function videoSchedulePage(Station $station)
+    {
+        $this->ensureOwnership($station);
+        return Inertia::render('Client/VideoStation/Schedule', [
+            'station' => $this->getCommonStationData($station),
+        ]);
+    }
+
+    /* =========================================================================
+       VIDEO STATION — Media & Schedule (TV Station)
+       ========================================================================= */
+
+    public function videoMediaList(Station $station)
+    {
+        $this->ensureOwnership($station);
+        $videos = \Modules\AutoDJ\Models\VideoMedia::where('station_id', $station->id)
+            ->latest()->get()->map(fn($v) => [
+                'id' => $v->id,
+                'title' => $v->title,
+                'filename' => $v->filename,
+                'duration' => (int) $v->duration,
+                'size_bytes' => $v->size_bytes ?? 0,
+                'source' => $v->source ?? 'upload',
+                'created_at' => $v->created_at->format('d/m/Y'),
+            ]);
+        return response()->json(['videos' => $videos]);
+    }
+
+    public function videoMediaStore(Request $request, Station $station)
+    {
+        $this->ensureOwnership($station);
+        $request->validate([
+            'file' => 'required|file|mimetypes:video/mp4,video/x-matroska,video/webm,video/quicktime,video/x-msvideo,video/x-flv,video/MP2T|max:2097152',
+            'title' => 'nullable|string|max:255',
+        ]);
+
+        $file = $request->file('file');
+        $path = $file->store("stations/{$station->id}/videos", 'public');
+        $filename = $file->getClientOriginalName();
+        $title = $request->input('title', pathinfo($filename, PATHINFO_FILENAME));
+
+        $duration = 0;
+        try {
+            $fullPath = storage_path("app/public/{$path}");
+            $ffprobe = \Symfony\Component\Process\Process::fromShellCommandline(
+                'ffprobe -v error -show_entries format=duration -of csv=p=0 ' . escapeshellarg($fullPath)
+            );
+            $ffprobe->run();
+            if ($ffprobe->isSuccessful()) {
+                $duration = (int) round((float) trim($ffprobe->getOutput()));
+            }
+        } catch (\Throwable $e) {}
+
+        $video = \Modules\AutoDJ\Models\VideoMedia::create([
+            'station_id' => $station->id,
+            'title' => $title,
+            'filename' => $filename,
+            'path' => $path,
+            'duration' => $duration,
+            'size_bytes' => $file->getSize(),
+            'source' => 'upload',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Video subido correctamente.',
+            'video' => ['id' => $video->id, 'title' => $video->title, 'duration' => $duration],
+        ]);
+    }
+
+    public function videoMediaDestroy(Station $station, $mediaId)
+    {
+        $this->ensureOwnership($station);
+        $video = \Modules\AutoDJ\Models\VideoMedia::where('station_id', $station->id)->findOrFail($mediaId);
+        \Storage::disk('public')->delete($video->path);
+        $video->delete();
+        return response()->json(['success' => true]);
+    }
+
+    public function videoMediaYoutubeDl(Request $request, Station $station)
+    {
+        $this->ensureOwnership($station);
+        $request->validate(['url' => 'required|url']);
+
+        // In production this would queue a job using yt-dlp
+        // For now, store as a placeholder and dispatch async
+        $url = $request->input('url');
+        $title = 'YouTube: ' . parse_url($url, PHP_URL_HOST) . '...';
+
+        $video = \Modules\AutoDJ\Models\VideoMedia::create([
+            'station_id' => $station->id,
+            'title' => $title,
+            'filename' => basename(parse_url($url, PHP_URL_PATH) ?: 'video') . '.mp4',
+            'path' => '',
+            'duration' => 0,
+            'size_bytes' => 0,
+            'source' => 'youtube',
+            'yt_url' => $url,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Descarga de YouTube iniciada. El video aparecerá cuando se complete.',
+        ]);
+    }
+
+    public function videoScheduleList(Station $station)
+    {
+        $this->ensureOwnership($station);
+        $schedule = \Modules\AutoDJ\Models\TvSchedule::where('station_id', $station->id)
+            ->orderBy('position')->with('videoMedia')->get()->map(fn($s) => [
+                'id' => $s->id,
+                'video_id' => $s->video_media_id,
+                'position' => $s->position,
+                'video_title' => $s->videoMedia->title ?? '—',
+                'video_filename' => $s->videoMedia->filename ?? '—',
+                'duration' => (int) ($s->videoMedia->duration ?? 0),
+            ]);
+        return response()->json(['schedule' => $schedule]);
+    }
+
+    public function videoScheduleAdd(Request $request, Station $station)
+    {
+        $this->ensureOwnership($station);
+        $request->validate(['video_id' => 'required|integer']);
+
+        $maxPos = \Modules\AutoDJ\Models\TvSchedule::where('station_id', $station->id)->max('position') ?? -1;
+
+        \Modules\AutoDJ\Models\TvSchedule::create([
+            'station_id' => $station->id,
+            'video_media_id' => $request->video_id,
+            'position' => $maxPos + 1,
+        ]);
+
+        return response()->json(['success' => true, 'message' => 'Video agregado a la programación.']);
+    }
+
+    public function videoScheduleRemove(Request $request, Station $station)
+    {
+        $this->ensureOwnership($station);
+        $request->validate(['schedule_id' => 'required|integer']);
+
+        \Modules\AutoDJ\Models\TvSchedule::where('station_id', $station->id)
+            ->where('id', $request->schedule_id)->delete();
+
+        return response()->json(['success' => true]);
+    }
+
+    public function videoScheduleReorder(Request $request, Station $station)
+    {
+        $this->ensureOwnership($station);
+        $request->validate(['positions' => 'required|array']);
+
+        foreach ($request->positions as $item) {
+            \Modules\AutoDJ\Models\TvSchedule::where('station_id', $station->id)
+                ->where('id', $item['id'])
+                ->update(['position' => $item['position']]);
+        }
+
+        return response()->json(['success' => true, 'message' => 'Orden guardado.']);
+    }
 }

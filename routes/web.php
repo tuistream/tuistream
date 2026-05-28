@@ -141,6 +141,19 @@ Route::middleware('auth')->group(function () {
     Route::post('/dashboard/canaltv/{station}/suspend', [ClientStationController::class, 'suspendStationVideo']);
     Route::post('/dashboard/canaltv/{station}/delete', [ClientStationController::class, 'deleteStationVideo']);
 
+    // Video Station — TV Station Media & Schedule
+    Route::get('/dashboard/canaltv/{station}/media', [ClientStationController::class, 'videoMediaPage'])->name('client.canaltv.media');
+    Route::get('/dashboard/canaltv/{station}/media/list', [ClientStationController::class, 'videoMediaList'])->name('client.canaltv.media.list');
+    Route::post('/dashboard/canaltv/{station}/media/store', [ClientStationController::class, 'videoMediaStore'])->name('client.canaltv.media.store');
+    Route::delete('/dashboard/canaltv/{station}/media/{media}', [ClientStationController::class, 'videoMediaDestroy'])->name('client.canaltv.media.destroy');
+    Route::post('/dashboard/canaltv/{station}/media/youtube-dl', [ClientStationController::class, 'videoMediaYoutubeDl'])->name('client.canaltv.media.youtube-dl');
+
+    Route::get('/dashboard/canaltv/{station}/schedule', [ClientStationController::class, 'videoSchedulePage'])->name('client.canaltv.schedule');
+    Route::get('/dashboard/canaltv/{station}/schedule/list', [ClientStationController::class, 'videoScheduleList'])->name('client.canaltv.schedule.list');
+    Route::post('/dashboard/canaltv/{station}/schedule/add', [ClientStationController::class, 'videoScheduleAdd'])->name('client.canaltv.schedule.add');
+    Route::post('/dashboard/canaltv/{station}/schedule/remove', [ClientStationController::class, 'videoScheduleRemove'])->name('client.canaltv.schedule.remove');
+    Route::post('/dashboard/canaltv/{station}/schedule/reorder', [ClientStationController::class, 'videoScheduleReorder'])->name('client.canaltv.schedule.reorder');
+
     // Herramientas del Cliente
     Route::get('/dashboard/station/{station}/youtube-downloader', [ClientStationController::class, 'youtubePage'])->name('client.station.youtube');
     Route::post('/dashboard/station/{station}/youtube-downloader/download', [ClientStationController::class, 'youtubeDownload']);
