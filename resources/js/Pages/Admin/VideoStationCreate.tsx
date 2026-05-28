@@ -18,8 +18,9 @@ interface PageProps {
     next_port: number;
 }
 
+const BITRATES = [400, 600, 800, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000, 8000, 10000, 12000];
 const TRANSCODER_PROFILES = ['160p', '240p', '360p', '480p', '576p', '720p', '1080p', '4k', 'source'];
-const STREAM_TARGET_PLATFORMS = ['Facebook', 'Youtube', 'RTMP', 'Icecast', 'Kick', 'VK', 'Twitch', 'Telegram', 'Instagram'];
+const STREAM_TARGET_PLATFORMS = ['Facebook', 'Youtube', 'RTMP', 'Kick', 'VK', 'Twitch', 'Telegram', 'Instagram'];
 
 const labelClass = 'text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5';
 const inputClass = 'w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-pink-500/60 focus:ring-1 focus:ring-pink-500/20 transition-all';
@@ -295,19 +296,18 @@ export default function VideoStationCreate() {
                                 {errors.port && <p className={errorClass}>{errors.port}</p>}
                             </div>
 
-                            {/* Bitrate */}
+                            {/* Video Bitrate */}
                             <div>
                                 <label className={labelClass}>Bitrate (Kbps) <span className="text-red-400">*</span></label>
-                                <input
-                                    type="number"
-                                    min={256}
-                                    max={99999}
-                                    value={data.bitrate}
-                                    onChange={e => setData('bitrate', parseInt(e.target.value))}
-                                    placeholder="256 – 99999 Kbps"
-                                    className={inputClass}
-                                    required
-                                />
+                                <div className="relative">
+                                    <select value={data.bitrate} onChange={e => setData('bitrate', parseInt(e.target.value))}
+                                        className={selectClass}>
+                                        {BITRATES.map(b => (
+                                            <option key={b} value={b}>{b >= 1000 ? `${b / 1000} Mbps` : `${b} Kbps`}</option>
+                                        ))}
+                                    </select>
+                                    <Play className="absolute right-3.5 top-3 w-3.5 h-3.5 text-slate-600 pointer-events-none" />
+                                </div>
                                 {errors.bitrate && <p className={errorClass}>{errors.bitrate}</p>}
                             </div>
 
