@@ -92,7 +92,7 @@ export default function AudioStationMedia() {
     const fetchPlaylists = useCallback(async () => {
         try {
             const res = await fetch(`/dashboard/station/${station.id}/playlists/list`, {
-                headers: { 'Accept': 'application/json' }
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
             });
             if (res.ok) setPlaylists(await res.json());
         } catch { /* keep current */ }
@@ -121,7 +121,7 @@ export default function AudioStationMedia() {
             const r = await fetch(`/dashboard/station/${station.id}/playlists/store`, {
                 method: 'POST',
                 headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: newPlaylistName.trim() }),
+                body: JSON.stringify({ name: newPlaylistName.trim(), type: 'standard' }),
             });
             if (!r.ok) throw new Error('Error');
             const newList = await r.json();
@@ -147,7 +147,7 @@ export default function AudioStationMedia() {
         try {
             await fetch(`/dashboard/station/${station.id}/playlists/${selectedPlaylist}/add-media`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': getCsrfToken() },
+                headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ media_ids: selectedFiles }),
             });
             setSelectedFiles([]);
@@ -380,4 +380,12 @@ export default function AudioStationMedia() {
 function getCsrfToken(): string {
     const meta = document.querySelector('meta[name="csrf-token"]');
     return meta ? (meta as HTMLMetaElement).content : '';
+}
+
+function apiHeaders() {
+    return {
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRF-TOKEN': getCsrfToken(),
+    };
 }

@@ -41,7 +41,7 @@ export default function AudioStationPlaylists() {
 
     const fetchPlaylists = useCallback(async () => {
         try {
-            const res = await fetch(`${apiBase}/list`, { headers: { 'Accept': 'application/json' } });
+            const res = await fetch(`${apiBase}/list`, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
             if (res.ok) setPlaylists(await res.json());
         } catch { /* keep current list */ }
         setLoading(false);
