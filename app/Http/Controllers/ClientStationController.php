@@ -217,13 +217,6 @@ class ClientStationController extends Controller
         ]);
     }
 
-    public function songTitleAudio(Station $station)
-    {
-        $this->ensureOwnership($station);
-        return Inertia::render('Client/AudioStation/SongTitle', [
-            'station' => $this->getCommonStationData($station),
-        ]);
-    }
 
     public function logsAudio(Station $station)
     {
