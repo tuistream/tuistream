@@ -13,6 +13,7 @@ interface StationData {
     name: string;
     slug: string;
     type: 'audio' | 'video';
+    service_type: string;
     status: string;
     port: number;
     dj_port: number;
@@ -39,24 +40,14 @@ interface PageProps {
     flash: { success?: string; error?: string };
 }
 
-// Generar data falsa hermosa de conexiones para el gráfico
-const chartData = [
-    { time: '25th 06:00', connections: 0.1 },
-    { time: '25th 09:00', connections: 0.0 },
-    { time: '25th 12:00', connections: 0.4 },
-    { time: '25th 15:00', connections: 0.2 },
-    { time: '25th 18:00', connections: 0.8 },
-    { time: '25th 21:00', connections: 0.5 },
-    { time: '26th 00:00', connections: 0.0 },
-    { time: '26th 03:00', connections: 0.1 },
-    { time: '26th 06:00', connections: 0.3 },
-    { time: '26th 09:00', connections: 0.5 },
-    { time: '26th 12:00', connections: 0.9 },
-    { time: '26th 15:00', connections: 0.4 },
-    { time: '26th 18:00', connections: 0.7 },
-    { time: '26th 21:00', connections: 0.5 },
-    { time: '27th 00:00', connections: 0.2 },
-];
+function serviceTypeLabel(type: string): string {
+    const labels: Record<string, string> = {
+        live_streaming: '📡 Live Streaming',
+        tv_station: '📺 TV Station / Web TV',
+        stream_relay: '🔄 Stream Relay',
+    };
+    return labels[type] || type;
+}
 
 export default function VideoStationGeneral() {
     const { station, auth, flash } = usePage<any>().props as PageProps;
@@ -187,16 +178,16 @@ export default function VideoStationGeneral() {
                         <div className="lg:col-span-4 space-y-3.5">
                             <div className="p-5 rounded-2xl border border-slate-900 bg-slate-900/15 backdrop-blur-xs space-y-4">
                                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Detalles del Canal</h3>
-                                <InfoItem label="Cliente" value={auth.user?.name || 'Wendy Ruth Gomez'} />
-                                <InfoItem label="Tipo de servicio" value="Live Streaming Video" />
+                                <InfoItem label="Cliente" value={station.client_name || auth.user?.name || '—'} />
+                                <InfoItem label="Tipo de servicio" value={serviceTypeLabel(station.service_type)} />
                                 <div>
                                     <span className="text-[10px] text-slate-500 uppercase font-sans font-bold block mb-1">Página pública</span>
                                     <a href={publicUrl} target="_blank" rel="noreferrer" className="text-xs text-pink-400 hover:underline truncate block">{publicUrl}</a>
                                 </div>
                                 <ProgressItem label="Conexiones" value={`${station.listeners} / ${station.max_listeners}`} percent={(station.listeners / station.max_listeners) * 100} color="pink" />
-                                <ProgressItem label="Tasa de bits (Kbps)" value={`${station.status === 'online' ? 2500 : 0} / 9999`} percent={station.status === 'online' ? 25 : 0} color="pink" />
-                                <ProgressItem label="Disco (MB)" value={`${station.storage_used_mb} / 15000 MB`} percent={storagePercent} color="violet" />
-                                <ProgressItem label="Tráfico (GB)" value={`${station.bandwidth_used_gb} GB / ${station.bandwidth_limit_gb} GB`} percent={(station.bandwidth_used_gb / station.bandwidth_limit_gb) * 100} color="cyan" />
+                                <ProgressItem label="Tasa de bits (Kbps)" value={`${station.bitrate} Kbps`} percent={station.status === 'online' ? (station.bitrate / 99999) * 100 : 0} color="pink" />
+                                <ProgressItem label="Disco (MB)" value={`${station.storage_used_mb} / ${station.storage_limit_mb > 0 ? station.storage_limit_mb : '∞'} MB`} percent={storagePercent} color="violet" />
+                                <ProgressItem label="Tráfico (GB)" value={`${station.bandwidth_used_gb} GB / ${station.bandwidth_limit_gb > 0 ? station.bandwidth_limit_gb : '∞'} GB`} percent={station.bandwidth_limit_gb > 0 ? (station.bandwidth_used_gb / station.bandwidth_limit_gb) * 100 : 0} color="cyan" />
                             </div>
                         </div>
 

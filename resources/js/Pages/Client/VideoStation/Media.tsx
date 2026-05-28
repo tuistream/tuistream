@@ -16,6 +16,8 @@ interface VideoMedia {
     duration: number;
     size_bytes: number;
     source: 'upload' | 'youtube';
+    status?: string;
+    progress?: number;
     created_at: string;
 }
 
@@ -29,6 +31,9 @@ export default function VideoStationMedia() {
     const [uploading, setUploading] = useState(false);
     const [youtubeUrl, setYoutubeUrl] = useState('');
     const [ytLoading, setYtLoading] = useState(false);
+    const [ytProgress, setYtProgress] = useState(0);
+    const [ytStatus, setYtStatus] = useState('');
+    const [ytJobId, setYtJobId] = useState<number | null>(null);
     const fileRef = useRef<HTMLInputElement>(null);
 
     const api = `/dashboard/canaltv/${station.id}/media`;
@@ -75,6 +80,8 @@ export default function VideoStationMedia() {
     const downloadYoutube = () => {
         if (!youtubeUrl.trim()) return;
         setYtLoading(true);
+        setYtProgress(0);
+        setYtStatus('Iniciando descarga...');
         fetch(`${api}/youtube-dl`, {
             method: 'POST',
             headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
@@ -83,16 +90,53 @@ export default function VideoStationMedia() {
             .then(r => r.json())
             .then(d => {
                 if (d.success) {
-                    setMessage({ type: 'success', text: d.message || 'Descarga iniciada en segundo plano.' });
-                    setShowYoutube(false);
-                    setYoutubeUrl('');
-                    setTimeout(loadVideos, 3000);
+                    setYtJobId(d.job_id);
+                    setYtStatus('Descargando...');
+                    pollProgress(d.job_id);
                 } else {
-                    setMessage({ type: 'error', text: d.message || 'Error al descargar' });
+                    setYtStatus('');
+                    setMessage({ type: 'error', text: d.message || 'Error al iniciar descarga' });
+                    setYtLoading(false);
                 }
             })
-            .catch(() => setMessage({ type: 'error', text: 'Error de red' }))
-            .finally(() => setYtLoading(false));
+            .catch(() => {
+                setMessage({ type: 'error', text: 'Error de red' });
+                setYtLoading(false);
+            });
+    };
+
+    const pollProgress = (jobId: number) => {
+        const interval = setInterval(() => {
+            fetch(`${api}/youtube-dl/${jobId}/progress`, { headers: apiHeaders() })
+                .then(r => r.json())
+                .then(d => {
+                    setYtProgress(d.progress || 0);
+                    setYtStatus(d.status_text || d.status || 'Descargando...');
+                    if (d.status === 'completed') {
+                        clearInterval(interval);
+                        setYtLoading(false);
+                        setYtProgress(100);
+                        setYtStatus('');
+                        setYtJobId(null);
+                        setShowYoutube(false);
+                        setYoutubeUrl('');
+                        loadVideos();
+                        setMessage({ type: 'success', text: `Video "${d.title || 'YouTube'}" descargado correctamente.` });
+                    }
+                    if (d.status === 'failed') {
+                        clearInterval(interval);
+                        setYtLoading(false);
+                        setYtStatus('');
+                        setYtJobId(null);
+                        setMessage({ type: 'error', text: d.error || 'Error en la descarga. Verifica la URL.' });
+                    }
+                })
+                .catch(() => {
+                    clearInterval(interval);
+                    setYtLoading(false);
+                    setYtStatus('');
+                });
+        }, 1000);
     };
 
     const deleteVideo = (v: VideoMedia) => {
@@ -226,14 +270,31 @@ export default function VideoStationMedia() {
                                 <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">URL del video</label>
                                 <div className="relative">
                                     <Youtube className="absolute left-3.5 top-3 w-3.5 h-3.5 text-slate-600" />
-                                    <input value={youtubeUrl} onChange={e => setYoutubeUrl(e.target.value)}
-                                        placeholder="https://www.youtube.com/watch?v=..." className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white focus:outline-none focus:border-pink-500/50" />
+                                    <input value={youtubeUrl} onChange={e => setYoutubeUrl(e.target.value)} disabled={ytLoading}
+                                        placeholder="https://www.youtube.com/watch?v=..." className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white focus:outline-none focus:border-pink-500/50 disabled:opacity-50" />
                                 </div>
                             </div>
+
+                            {ytLoading && (
+                                <div className="space-y-2">
+                                    <div className="flex justify-between text-[10px] text-slate-400">
+                                        <span>{ytStatus}</span>
+                                        <span>{ytProgress}%</span>
+                                    </div>
+                                    <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden">
+                                        <div className="bg-gradient-to-r from-pink-500 to-red-500 h-full rounded-full transition-all duration-500"
+                                            style={{ width: `${ytProgress}%` }} />
+                                    </div>
+                                    <p className="text-[9px] text-slate-600">No cierres esta ventana hasta que se complete la descarga.</p>
+                                </div>
+                            )}
+
                             <div className="flex gap-2 pt-2">
-                                <button type="button" onClick={() => setShowYoutube(false)} className="flex-1 py-2.5 bg-slate-900 border border-slate-800 text-slate-400 rounded-xl text-xs font-bold">Cancelar</button>
-                                <button onClick={downloadYoutube} disabled={ytLoading || !youtubeUrl.trim()} className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2">
-                                    {ytLoading ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Descargando...</> : <><Download className="w-3.5 h-3.5" /> Descargar</>}
+                                <button type="button" onClick={() => { if (!ytLoading) setShowYoutube(false); }}
+                                    className="flex-1 py-2.5 bg-slate-900 border border-slate-800 text-slate-400 rounded-xl text-xs font-bold disabled:opacity-50" disabled={ytLoading}>Cancelar</button>
+                                <button onClick={downloadYoutube} disabled={ytLoading || !youtubeUrl.trim()}
+                                    className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2">
+                                    {ytLoading ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {ytStatus}</> : <><Download className="w-3.5 h-3.5" /> Descargar</>}
                                 </button>
                             </div>
                         </div>

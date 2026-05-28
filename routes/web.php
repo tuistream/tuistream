@@ -132,6 +132,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard/canaltv/{station}/widgets', [ClientStationController::class, 'widgetsVideo'])->name('client.canaltv.widgets');
     Route::get('/dashboard/canaltv/{station}/public', [ClientStationController::class, 'publicVideo'])->name('client.canaltv.public');
     Route::get('/dashboard/canaltv/{station}/reports', [ClientStationController::class, 'reportsVideo'])->name('client.canaltv.reports');
+    Route::get('/dashboard/canaltv/{station}/reports/data', [ClientStationController::class, 'reportsVideoData'])->name('client.canaltv.reports.data');
     Route::get('/dashboard/canaltv/{station}/suspend', [ClientStationController::class, 'suspendVideo'])->name('client.canaltv.suspend');
     Route::get('/dashboard/canaltv/{station}/delete', [ClientStationController::class, 'deleteVideo'])->name('client.canaltv.delete');
 
@@ -147,6 +148,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/dashboard/canaltv/{station}/media/store', [ClientStationController::class, 'videoMediaStore'])->name('client.canaltv.media.store');
     Route::delete('/dashboard/canaltv/{station}/media/{media}', [ClientStationController::class, 'videoMediaDestroy'])->name('client.canaltv.media.destroy');
     Route::post('/dashboard/canaltv/{station}/media/youtube-dl', [ClientStationController::class, 'videoMediaYoutubeDl'])->name('client.canaltv.media.youtube-dl');
+    Route::get('/dashboard/canaltv/{station}/media/youtube-dl/{job}/progress', [ClientStationController::class, 'videoMediaYoutubeProgress'])->name('client.canaltv.media.youtube-progress');
 
     Route::get('/dashboard/canaltv/{station}/schedule', [ClientStationController::class, 'videoSchedulePage'])->name('client.canaltv.schedule');
     Route::get('/dashboard/canaltv/{station}/schedule/list', [ClientStationController::class, 'videoScheduleList'])->name('client.canaltv.schedule.list');
