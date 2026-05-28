@@ -164,6 +164,7 @@ class ClientStationController extends Controller
         ]);
     }
 
+
     public function widgetsAudio(Station $station)
     {
         $this->ensureOwnership($station);
@@ -171,14 +172,17 @@ class ClientStationController extends Controller
         $port = request()->getPort();
         $scheme = request()->getScheme();
         $portSuffix = ($port == 80 || $port == 443) ? '' : ":{$port}";
-        
+
         return Inertia::render('Client/AudioStation/Widgets', [
             'station' => $this->getCommonStationData($station),
             'urls' => [
-                'public_page' => "{$scheme}://{$domain}{$portSuffix}/public/station/{$station->slug}",
+                'public_page' => "{$scheme}://{$domain}{$portSuffix}/radio/{$station->slug}",
                 'admin_url' => "http://{$domain}:{$station->port}/admin",
                 'stream_http' => "http://{$domain}:{$station->port}/radio.mp3",
                 'stream_https' => "https://{$domain}:{$station->port}/radio.mp3",
+                'stream_proxy_url' => \App\Models\Setting::get('stream_proxy_url_' . $station->id, "https://{$domain}:{$station->port}/radio.mp3"),
+                'm3u_playlist' => \App\Models\Setting::get('m3u_playlist_' . $station->id, "https://{$domain}:{$station->port}/radio.m3u"),
+                'listeners_url' => \App\Models\Setting::get('listeners_url_' . $station->id, "https://{$domain}:{$station->port}/status-json.xsl"),
             ],
         ]);
     }
@@ -825,4 +829,333 @@ class ClientStationController extends Controller
         $playlist->mediaFiles()->detach($validated['media_id']);
         return response()->json(['success' => true]);
     }
-}
+
+    /* =========================================================================
+       JINGLES CRUD
+       ========================================================================= */
+
+    public function jinglesList(Station $station)
+    {
+        $this->ensureOwnership($station);
+        $jingles = $station->jingles()->latest()->get()->map(fn($j) => [
+            'id' => $j->id,
+            'name' => $j->name,
+            'filename' => $j->filename,
+            'duration' => $j->duration,
+            'interval' => $j->interval,
+            'is_active' => $j->is_active,
+            'created_at' => $j->created_at->format('d/m/Y'),
+        ]);
+        return response()->json(['jingles' => $jingles]);
+    }
+
+    public function jinglesStore(Request $request, Station $station)
+    {
+        $this->ensureOwnership($station);
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'file' => 'required|file|mimes:mp3,wav,ogg,flac|max:102400',
+            'interval' => 'sometimes|integer|min:1|max:999',
+        ]);
+
+        $path = $request->file('file')->store("stations/{$station->id}/jingles", 'public');
+        
+        $duration = 0;
+        try {
+            $getID3 = new \getID3();
+            $info = $getID3->analyze(storage_path("app/public/{$path}"));
+            $duration = (int) round($info['playtime_seconds'] ?? 0);
+        } catch (\Throwable $e) {
+            // fallback
+        }
+
+        $jingle = $station->jingles()->create([
+            'name' => $validated['name'],
+            'filename' => $request->file('file')->getClientOriginalName(),
+            'path' => $path,
+            'duration' => $duration,
+            'interval' => $validated['interval'] ?? 4,
+            'is_active' => true,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'jingle' => [
+                'id' => $jingle->id,
+                'name' => $jingle->name,
+                'filename' => $jingle->filename,
+                'duration' => $duration,
+                'interval' => $jingle->interval,
+                'is_active' => $jingle->is_active,
+                'created_at' => $jingle->created_at->format('d/m/Y'),
+            ],
+            'message' => 'Jingle subido correctamente.',
+        ]);
+    }
+
+    public function jinglesUpdate(Request $request, Station $station, $jingleId)
+    {
+        $this->ensureOwnership($station);
+        $jingle = $station->jingles()->findOrFail($jingleId);
+
+        $validated = $request->validate([
+            'name' => 'sometimes|string|max:255',
+            'interval' => 'sometimes|integer|min:1|max:999',
+            'is_active' => 'sometimes|boolean',
+        ]);
+
+        $jingle->update($validated);
+
+        return response()->json(['success' => true, 'message' => 'Jingle actualizado.']);
+    }
+
+    public function jinglesDestroy(Station $station, $jingleId)
+    {
+        $this->ensureOwnership($station);
+        $jingle = $station->jingles()->findOrFail($jingleId);
+        \Illuminate\Support\Facades\Storage::disk('public')->delete($jingle->path);
+        $jingle->delete();
+        return response()->json(['success' => true]);
+    }
+
+    public function jinglesSettings(Request $request, Station $station)
+    {
+        $this->ensureOwnership($station);
+        $validated = $request->validate([
+            'interval' => 'required|integer|min:1|max:999',
+        ]);
+
+        $station->jingles()->update(['interval' => $validated['interval']]);
+        return response()->json(['success' => true, 'message' => 'Intervalo de jingles actualizado.']);
+    }
+
+    /* =========================================================================
+       SCHEDULE CRUD
+       ========================================================================= */
+
+    public function scheduleList(Station $station)
+    {
+        $this->ensureOwnership($station);
+        $slots = $station->scheduleSlots()->orderBy('day')->orderBy('start_time')->get()->map(fn($s) => [
+            'id' => $s->id,
+            'day' => $s->day,
+            'day_name' => $this->dayName($s->day),
+            'start_time' => $s->start_time,
+            'end_time' => $s->end_time,
+            'type' => $s->type,
+            'playlist_id' => $s->playlist_id,
+            'playlist_name' => $s->playlist?->name,
+            'title' => $s->title,
+        ]);
+        return response()->json(['slots' => $slots]);
+    }
+
+    public function scheduleStore(Request $request, Station $station)
+    {
+        $this->ensureOwnership($station);
+        $validated = $request->validate([
+            'day' => 'required|integer|min:1|max:7',
+            'start_time' => 'required|date_format:H:i',
+            'end_time' => 'required|date_format:H:i|after:start_time',
+            'type' => 'required|in:rotation,dj_live,playlist,jingles',
+            'playlist_id' => 'nullable|integer|exists:playlists,id',
+            'title' => 'sometimes|string|max:255',
+        ]);
+
+        // Validar que no haya solapamiento
+        $overlap = $station->scheduleSlots()
+            ->where('day', $validated['day'])
+            ->where(fn($q) => $q
+                ->whereBetween('start_time', [$validated['start_time'], $validated['end_time']])
+                ->orWhereBetween('end_time', [$validated['start_time'], $validated['end_time']])
+                ->orWhere(fn($q2) => $q2
+                    ->where('start_time', '<=', $validated['start_time'])
+                    ->where('end_time', '>=', $validated['end_time'])
+                )
+            )->exists();
+
+        if ($overlap) {
+            return response()->json(['error' => 'El horario se solapa con otro evento.'], 422);
+        }
+
+        $slot = $station->scheduleSlots()->create($validated);
+
+        return response()->json([
+            'success' => true,
+            'slot' => [
+                'id' => $slot->id,
+                'day' => $slot->day,
+                'day_name' => $this->dayName($slot->day),
+                'start_time' => $slot->start_time,
+                'end_time' => $slot->end_time,
+                'type' => $slot->type,
+                'playlist_id' => $slot->playlist_id,
+                'playlist_name' => $slot->playlist?->name,
+                'title' => $slot->title,
+            ],
+        ]);
+    }
+
+    public function scheduleDestroy(Station $station, $slotId)
+    {
+        $this->ensureOwnership($station);
+        $station->scheduleSlots()->where('id', $slotId)->delete();
+        return response()->json(['success' => true]);
+    }
+
+    private function dayName(int $day): string
+    {
+        $names = [1 => 'Lunes', 2 => 'Martes', 3 => 'Miércoles', 4 => 'Jueves', 5 => 'Viernes', 6 => 'Sábado', 7 => 'Domingo'];
+        return $names[$day] ?? 'Desconocido';
+    }
+
+    /* =========================================================================
+       MOUNT POINTS CRUD
+       ========================================================================= */
+
+    public function mountPointsList(Station $station)
+    {
+        $this->ensureOwnership($station);
+        $points = $station->mountPoints()->latest()->get()->map(fn($m) => [
+            'id' => $m->id,
+            'path' => $m->path,
+            'bitrate' => $m->bitrate,
+            'format' => $m->format,
+            'is_default' => $m->is_default,
+            'is_public' => $m->is_public ?? true,
+        ]);
+        return response()->json(['mount_points' => $points]);
+    }
+
+    public function mountPointsStore(Request $request, Station $station)
+    {
+        $this->ensureOwnership($station);
+        $validated = $request->validate([
+            'path' => 'required|string|max:255|starts_with:/',
+            'bitrate' => 'required|integer|min:16|max:320',
+            'format' => 'required|in:MP3,AAC,OGG,FLAC',
+            'is_default' => 'sometimes|boolean',
+            'is_public' => 'sometimes|boolean',
+        ]);
+
+        if (!empty($validated['is_default'])) {
+            $station->mountPoints()->update(['is_default' => false]);
+        }
+
+        $mount = $station->mountPoints()->create($validated);
+
+        return response()->json([
+            'success' => true,
+            'mount_point' => [
+                'id' => $mount->id,
+                'path' => $mount->path,
+                'bitrate' => $mount->bitrate,
+                'format' => $mount->format,
+                'is_default' => $mount->is_default,
+                'is_public' => $mount->is_public ?? true,
+            ],
+            'message' => 'Punto de montaje creado.',
+        ]);
+    }
+
+    public function mountPointsUpdate(Request $request, Station $station, $mountId)
+    {
+        $this->ensureOwnership($station);
+        $mount = $station->mountPoints()->findOrFail($mountId);
+
+        $validated = $request->validate([
+            'path' => 'sometimes|string|max:255|starts_with:/',
+            'bitrate' => 'sometimes|integer|min:16|max:320',
+            'format' => 'sometimes|in:MP3,AAC,OGG,FLAC',
+            'is_default' => 'sometimes|boolean',
+            'is_public' => 'sometimes|boolean',
+        ]);
+
+        if (!empty($validated['is_default'])) {
+            $station->mountPoints()->where('id', '!=', $mountId)->update(['is_default' => false]);
+        }
+
+        $mount->update($validated);
+
+        return response()->json(['success' => true, 'message' => 'Punto de montaje actualizado.']);
+    }
+
+    public function mountPointsDestroy(Station $station, $mountId)
+    {
+        $this->ensureOwnership($station);
+        $mount = $station->mountPoints()->findOrFail($mountId);
+        if ($mount->is_default) {
+            return response()->json(['error' => 'No se puede eliminar el punto de montaje predeterminado.'], 422);
+        }
+        $mount->delete();
+        return response()->json(['success' => true]);
+    }
+
+    /* =========================================================================
+       SONG TITLE / METADATA
+       ========================================================================= */
+
+    public function songTitleAudio(Station $station)
+    {
+        $this->ensureOwnership($station);
+        $nowPlaying = cache("station_now_playing:{$station->id}", 'Reproduciendo…');
+        
+        return Inertia::render('Client/AudioStation/SongTitle', [
+            'station' => $this->getCommonStationData($station),
+            'now_playing' => $nowPlaying,
+        ]);
+    }
+
+    public function songTitleUpdate(Request $request, Station $station)
+    {
+        $this->ensureOwnership($station);
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+        ]);
+
+        cache(["station_now_playing:{$station->id}" => $validated['title']], 3600);
+        
+        // Intentar actualizar Icecast metadata via admin endpoint
+        try {
+            $adminPass = \App\Models\Setting::get('icecast_admin_password', '');
+            $domain = \App\Models\Setting::get('server_domain', '127.0.0.1');
+            $url = "http://icecast:8000/admin/metadata?mode=updinfo&mount=/radio.mp3&song=" . urlencode($validated['title']);
+            
+            $ctx = stream_context_create([
+                'http' => [
+                    'method' => 'GET',
+                    'header' => "Authorization: Basic " . base64_encode("admin:{$adminPass}"),
+                    'timeout' => 2,
+                ]
+            ]);
+            @file_get_contents($url, false, $ctx);
+        } catch (\Throwable $e) {
+            // metadata update es best-effort
+        }
+
+        return response()->json([
+            'success' => true,
+            'now_playing' => $validated['title'],
+            'message' => 'Metadato del Stream actualizado correctamente.',
+        ]);
+    }
+
+    /* =========================================================================
+       WIDGETS SETTINGS (SAVE)
+       ========================================================================= */
+
+    public function widgetsSave(Request $request, Station $station)
+    {
+        $this->ensureOwnership($station);
+        $validated = $request->validate([
+            'stream_proxy_url' => 'sometimes|nullable|url|max:500',
+            'm3u_playlist' => 'sometimes|nullable|url|max:500',
+            'listeners_url' => 'sometimes|nullable|url|max:500',
+        ]);
+
+        foreach ($validated as $key => $value) {
+            \App\Models\Setting::set($key . '_' . $station->id, $value ?? '');
+        }
+
+        return response()->json(['success' => true, 'message' => 'Widgets guardados correctamente.']);
+    }

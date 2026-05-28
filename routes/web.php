@@ -92,6 +92,32 @@ Route::middleware('auth')->group(function () {
     Route::post('/dashboard/station/{station}/playlists/{playlist}/add-media', [ClientStationController::class, 'playlistsAddMedia'])->name('client.station.playlists.add-media');
     Route::post('/dashboard/station/{station}/playlists/{playlist}/remove-media', [ClientStationController::class, 'playlistsRemoveMedia'])->name('client.station.playlists.remove-media');
 
+    // Jingles CRUD
+    Route::get('/dashboard/station/{station}/jingles/list', [ClientStationController::class, 'jinglesList'])->name('client.station.jingles.list');
+    Route::post('/dashboard/station/{station}/jingles/store', [ClientStationController::class, 'jinglesStore'])->name('client.station.jingles.store');
+    Route::put('/dashboard/station/{station}/jingles/{jingle}', [ClientStationController::class, 'jinglesUpdate'])->name('client.station.jingles.update');
+    Route::delete('/dashboard/station/{station}/jingles/{jingle}', [ClientStationController::class, 'jinglesDestroy'])->name('client.station.jingles.destroy');
+    Route::post('/dashboard/station/{station}/jingles/settings', [ClientStationController::class, 'jinglesSettings'])->name('client.station.jingles.settings');
+
+    // Schedule CRUD
+    Route::get('/dashboard/station/{station}/schedule/list', [ClientStationController::class, 'scheduleList'])->name('client.station.schedule.list');
+    Route::post('/dashboard/station/{station}/schedule/store', [ClientStationController::class, 'scheduleStore'])->name('client.station.schedule.store');
+    Route::delete('/dashboard/station/{station}/schedule/{slot}', [ClientStationController::class, 'scheduleDestroy'])->name('client.station.schedule.destroy');
+
+    // Mount Points CRUD
+    Route::get('/dashboard/station/{station}/mount-points/list', [ClientStationController::class, 'mountPointsList'])->name('client.station.mount-points.list');
+    Route::post('/dashboard/station/{station}/mount-points/store', [ClientStationController::class, 'mountPointsStore'])->name('client.station.mount-points.store');
+    Route::put('/dashboard/station/{station}/mount-points/{mount}', [ClientStationController::class, 'mountPointsUpdate'])->name('client.station.mount-points.update');
+    Route::delete('/dashboard/station/{station}/mount-points/{mount}', [ClientStationController::class, 'mountPointsDestroy'])->name('client.station.mount-points.destroy');
+
+    // Song Title / Metadata
+    Route::get('/dashboard/station/{station}/song-title', [ClientStationController::class, 'songTitleAudio'])->name('client.station.song-title');
+    Route::post('/dashboard/station/{station}/song-title/update', [ClientStationController::class, 'songTitleUpdate'])->name('client.station.song-title.update');
+
+    // Widgets
+    Route::get('/dashboard/station/{station}/widgets', [ClientStationController::class, 'widgetsAudio'])->name('client.station.widgets');
+    Route::post('/dashboard/station/{station}/widgets/save', [ClientStationController::class, 'widgetsSave'])->name('client.station.widgets.save');
+
     // Rutas para Streaming de Video (Canal TV)
     Route::get('/dashboard/canaltv/{station}', [ClientStationController::class, 'showVideo'])->name('client.canaltv.show');
     Route::get('/dashboard/canaltv/{station}/config', [ClientStationController::class, 'configVideo'])->name('client.canaltv.config');

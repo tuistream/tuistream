@@ -54,7 +54,7 @@ export default function AudioStationPlaylists() {
         try {
             const res = await fetch(`${apiBase}/store`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': getCsrfToken() },
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': getCsrfToken() },
                 body: JSON.stringify(form),
             });
             if (res.ok) { setShowCreate(false); setForm({ name: '', type: 'standard', play_mode: 'sequential' }); fetchPlaylists(); }
@@ -65,10 +65,10 @@ export default function AudioStationPlaylists() {
         try {
             await fetch(`${apiBase}/${pl.id}/toggle`, {
                 method: 'POST',
-                headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': getCsrfToken() },
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': getCsrfToken() },
             });
             fetchPlaylists();
-        } catch { /* handle error */ }
+        } catch { /* handle error */}
     };
 
     const handleDelete = async (pl: PlaylistData) => {
@@ -76,7 +76,7 @@ export default function AudioStationPlaylists() {
         try {
             await fetch(`${apiBase}/${pl.id}`, {
                 method: 'DELETE',
-                headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': getCsrfToken() },
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': getCsrfToken() },
             });
             fetchPlaylists();
         } catch { /* handle error */ }

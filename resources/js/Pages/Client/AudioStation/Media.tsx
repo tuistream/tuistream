@@ -49,6 +49,10 @@ export default function AudioStationMedia() {
     const [showAddToPlaylist, setShowAddToPlaylist] = useState(false);
     const [selectedFiles, setSelectedFiles] = useState<number[]>([]);
     const [selectedPlaylist, setSelectedPlaylist] = useState<number | null>(null);
+    const [showCreatePlaylist, setShowCreatePlaylist] = useState(false);
+    const [newPlaylistName, setNewPlaylistName] = useState('');
+    const [creating, setCreating] = useState(false);
+    const [message, setMessage] = useState<{type:string;text:string}|null>(null);
 
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
@@ -100,6 +104,42 @@ export default function AudioStationMedia() {
         setSelectedFiles(prev =>
             prev.includes(fileId) ? prev.filter(id => id !== fileId) : [...prev, fileId]
         );
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedFiles.length === files.length) {
+            setSelectedFiles([]);
+        } else {
+            setSelectedFiles(files.map(f => f.id));
+        }
+    };
+
+    const handleCreatePlaylistAndAdd = async () => {
+        if (!newPlaylistName.trim() || selectedFiles.length === 0) return;
+        setCreating(true);
+        try {
+            const r = await fetch(`/dashboard/station/${station.id}/playlists/store`, {
+                method: 'POST',
+                headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: newPlaylistName.trim() }),
+            });
+            if (!r.ok) throw new Error('Error');
+            const newList = await r.json();
+
+            if (newList.playlist?.id) {
+                await fetch(`/dashboard/station/${station.id}/playlists/${newList.playlist.id}/add-media`, {
+                    method: 'POST',
+                    headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ media_ids: selectedFiles }),
+                });
+                setMessage({ type: 'success', text: `Playlist "${newPlaylistName}" creada con ${selectedFiles.length} archivos.` });
+                setShowCreatePlaylist(false);
+                setNewPlaylistName('');
+                await fetchPlaylists();
+            }
+        } catch {
+            setMessage({ type: 'error', text: 'Error al crear playlist' });
+        } finally { setCreating(false); }
     };
 
     const handleAddToPlaylist = async () => {
@@ -221,7 +261,11 @@ export default function AudioStationMedia() {
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-slate-950/70 border-b border-slate-900 text-slate-400 text-[10px] font-semibold uppercase tracking-wider">
-                                    <th className="p-4 w-8"></th>
+                                    <th className="p-4 w-8">
+                                        <input type="checkbox" checked={selectedFiles.length === files.length && files.length > 0}
+                                            onChange={toggleSelectAll}
+                                            className="rounded bg-slate-800 border-slate-700 text-indigo-500 focus:ring-indigo-500" />
+                                    </th>
                                     <th className="p-4">Canción / Archivo</th>
                                     <th className="p-4">Artista</th>
                                     <th className="p-4">Duración</th>
@@ -282,22 +326,42 @@ export default function AudioStationMedia() {
                         </div>
                         <div className="p-5 space-y-4">
                             <p className="text-xs text-slate-400">{selectedFiles.length} archivo(s) seleccionado(s)</p>
-                            {playlists.length === 0 ? (
-                                <p className="text-xs text-slate-500">No hay playlists. Cree una en "Listas de Reproducción".</p>
-                            ) : (
-                                <div className="space-y-2 max-h-48 overflow-y-auto">
-                                    {playlists.map(pl => (
-                                        <button key={pl.id}
-                                            onClick={() => setSelectedPlaylist(pl.id)}
-                                            className={`w-full text-left px-3 py-2 rounded-lg border text-xs transition-all ${
-                                                selectedPlaylist === pl.id
-                                                    ? 'bg-indigo-500/10 border-indigo-500/30 text-white'
-                                                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
-                                            }`}>
-                                            {pl.name}
+                            <div className="space-y-2 max-h-48 overflow-y-auto">
+                                {playlists.map(pl => (
+                                    <button key={pl.id}
+                                        onClick={() => setSelectedPlaylist(pl.id)}
+                                        className={`w-full text-left px-3 py-2 rounded-lg border text-xs transition-all ${
+                                            selectedPlaylist === pl.id
+                                                ? 'bg-indigo-500/10 border-indigo-500/30 text-white'
+                                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                                        }`}>
+                                        {pl.name}
+                                    </button>
+                                ))}
+                                {playlists.length === 0 && !showCreatePlaylist && (
+                                    <p className="text-xs text-slate-500 py-2 text-center">No hay playlists.</p>
+                                )}
+                            </div>
+
+                            {showCreatePlaylist ? (
+                                <div className="space-y-2">
+                                    <input type="text" value={newPlaylistName} onChange={e => setNewPlaylistName(e.target.value)}
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs outline-none focus:border-indigo-500 text-slate-200"
+                                        placeholder="Nombre de la nueva playlist" autoFocus />
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setShowCreatePlaylist(false)}
+                                            className="flex-1 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[10px] font-bold text-slate-400">Cancelar</button>
+                                        <button onClick={handleCreatePlaylistAndAdd} disabled={creating || !newPlaylistName.trim()}
+                                            className="flex-1 py-1.5 bg-indigo-500 disabled:opacity-40 rounded-lg text-[10px] font-bold text-white">
+                                            {creating ? 'Creando...' : 'Crear y Agregar'}
                                         </button>
-                                    ))}
+                                    </div>
                                 </div>
+                            ) : (
+                                <button onClick={() => setShowCreatePlaylist(true)}
+                                    className="w-full py-2 bg-slate-900 border border-slate-800 border-dashed rounded-lg text-[10px] font-bold text-indigo-400 hover:text-indigo-300 hover:border-indigo-500/30 transition-all">
+                                    + Crear nueva playlist
+                                </button>
                             )}
                             <div className="flex gap-2 pt-2">
                                 <button onClick={() => setShowAddToPlaylist(false)}

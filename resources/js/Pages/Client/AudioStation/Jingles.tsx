@@ -1,95 +1,206 @@
-import { useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Head, usePage } from '@inertiajs/react';
-import { Volume2, Plus, Play, Music, Save, Settings } from 'lucide-react';
+import { Plus, Trash2, Play, Pause, Music, Settings, Volume2, Upload, ToggleLeft, ToggleRight, X } from 'lucide-react';
 import AudioStationLayout from './Layout';
 
-interface StationData {
-    id: number;
-    name: string;
-}
+const apiHeaders = () => ({
+    'Accept': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
+    'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+});
 
-interface PageProps {
-    station: StationData;
+interface Jingle {
+    id: number; name: string; filename: string; duration: number;
+    interval: number; is_active: boolean; created_at: string;
 }
 
 export default function AudioStationJingles() {
-    const { station } = usePage<any>().props as PageProps;
+    const { station } = usePage<any>().props as any;
+    const [jingles, setJingles] = useState<Jingle[]>([]);
     const [interval, setIntervalValue] = useState(4);
-    const [jingles, setJingles] = useState([
-        { id: 1, name: 'Identificación TuiStream Estéreo', filename: 'id_tuistream.mp3', duration: '12s' },
-        { id: 2, name: 'Intro de Verano Voces Cruzadas', filename: 'verano_intro.mp3', duration: '18s' },
-    ]);
+    const [loading, setLoading] = useState(true);
+    const [showUpload, setShowUpload] = useState(false);
+    const [playing, setPlaying] = useState<number | null>(null);
+    const [message, setMessage] = useState<{ type: string; text: string } | null>(null);
+    const [formData, setFormData] = useState({ name: '' });
+    const fileRef = useRef<HTMLInputElement>(null);
+
+    const api = `/dashboard/station/${station.id}/jingles`;
+
+    const loadJingles = () => {
+        setLoading(true);
+        fetch(`${api}/list`, { headers: apiHeaders() })
+            .then(r => r.json())
+            .then(data => { setJingles(data.jingles || []); })
+            .catch(() => setMessage({ type: 'error', text: 'Error al cargar jingles' }))
+            .finally(() => setLoading(false));
+    };
+
+    useEffect(() => { loadJingles(); }, []);
+
+    const uploadJingle = (e: FormEvent) => {
+        e.preventDefault();
+        const file = fileRef.current?.files?.[0];
+        if (!file) return;
+        if (!formData.name.trim()) { setMessage({ type: 'error', text: 'El nombre es requerido' }); return; }
+        
+        const fd = new FormData();
+        fd.append('name', formData.name);
+        fd.append('file', file);
+        fd.append('interval', String(interval));
+
+        fetch(`${api}/store`, { method: 'POST', headers: { ...apiHeaders(), 'X-Requested-With': 'XMLHttpRequest' }, body: fd })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    setMessage({ type: 'success', text: data.message });
+                    setShowUpload(false);
+                    setFormData({ name: '' });
+                    if (fileRef.current) fileRef.current.value = '';
+                    loadJingles();
+                } else {
+                    setMessage({ type: 'error', text: data.message || 'Error al subir' });
+                }
+            })
+            .catch(() => setMessage({ type: 'error', text: 'Error al subir jingle' }));
+    };
+
+    const toggleJingle = (j: Jingle) => {
+        fetch(`${api}/${j.id}`, {
+            method: 'PUT',
+            headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_active: !j.is_active }),
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) loadJingles();
+                else setMessage({ type: 'error', text: data.message });
+            })
+            .catch(() => setMessage({ type: 'error', text: 'Error al cambiar estado' }));
+    };
+
+    const deleteJingle = (j: Jingle) => {
+        if (!confirm(`¿Eliminar "${j.name}"?`)) return;
+        fetch(`${api}/${j.id}`, { method: 'DELETE', headers: apiHeaders() })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) { loadJingles(); setMessage({ type: 'success', text: 'Jingle eliminado.' }); }
+                else setMessage({ type: 'error', text: data.message || 'Error al eliminar' });
+            })
+            .catch(() => setMessage({ type: 'error', text: 'Error al eliminar' }));
+    };
+
+    const saveSettings = () => {
+        fetch(`${api}/settings`, {
+            method: 'POST',
+            headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ interval }),
+        })
+            .then(r => r.json())
+            .then(data => setMessage({ type: 'success', text: data.message }))
+            .catch(() => setMessage({ type: 'error', text: 'Error al guardar' }));
+    };
+
+    const formatDuration = (s: number) => {
+        const m = Math.floor(s / 60), sec = s % 60;
+        return `${m}:${sec.toString().padStart(2, '0')}`;
+    };
 
     return (
         <AudioStationLayout currentSection="jingles">
             <Head title={`${station.name} - Jingles`} />
-
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+            <div className="flex items-center justify-between gap-4 mb-6">
                 <div>
                     <h1 className="text-xl font-bold text-white flex items-center gap-2.5">
-                        <div className="p-2 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-xl">
-                            <Volume2 className="w-4 h-4" />
-                        </div>
-                        Jingles e Identificación
+                        <div className="p-2 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-xl"><Volume2 className="w-4 h-4"/></div>
+                        Jingles
                     </h1>
-                    <p className="text-xs text-slate-500 mt-1">Programe identificaciones y cuñas publicitarias automáticas para que suenen entre canciones</p>
+                    <p className="text-xs text-slate-500 mt-1">Cuñas, IDs y promos que suenan entre canciones</p>
                 </div>
+                <button onClick={() => setShowUpload(true)} className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-bold rounded-xl flex items-center gap-2 transition-all">
+                    <Upload className="w-3.5 h-3.5" /> Subir Jingle
+                </button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                {/* Rules & Interval Panel */}
-                <div className="lg:col-span-6 space-y-6">
-                    <div className="rounded-2xl border border-slate-900 bg-slate-900/20 backdrop-blur-sm overflow-hidden">
-                        <div className="p-4 border-b border-slate-900 bg-slate-900/10 flex items-center gap-2">
-                            <Settings className="w-4 h-4 text-indigo-400" />
-                            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Reglas de Intervalo</h3>
-                        </div>
-                        <div className="p-5 space-y-4">
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Reproducir un Jingle cada (canciones):</label>
-                                <input
-                                    type="number"
-                                    value={interval}
-                                    onChange={(e) => setIntervalValue(parseInt(e.target.value))}
-                                    className="w-full bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500/50"
-                                />
-                            </div>
+            {message && (
+                <div className={`mb-4 p-4 rounded-xl text-sm ${message.type === 'success' ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
+                    <span className={`inline-block w-2 h-2 rounded-full mr-2 ${message.type === 'success' ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                    {message.text}
+                </div>
+            )}
 
-                            <button className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5">
-                                <Save className="w-4 h-4" /> Guardar Reglas
-                            </button>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <div className="lg:col-span-5 space-y-4">
+                    <div className="rounded-2xl border border-slate-900 bg-slate-950/40 p-5">
+                        <div className="flex items-center gap-2 mb-4"><Settings className="w-4 h-4 text-indigo-400"/><h3 className="text-xs font-bold text-slate-300 uppercase">Intervalo</h3></div>
+                        <label className="text-[10px] text-slate-500 uppercase block mb-1.5">Cada cuántas canciones:</label>
+                        <div className="flex gap-2">
+                            <input type="number" min={1} max={999} value={interval} onChange={e => setIntervalValue(Number(e.target.value))}
+                                className="flex-1 bg-slate-950 border border-slate-900 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500 text-slate-200 font-mono" />
+                            <button onClick={saveSettings} className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-bold rounded-xl transition-all">Guardar</button>
                         </div>
                     </div>
                 </div>
 
-                {/* Jingles Library */}
-                <div className="lg:col-span-6 space-y-6">
-                    <div className="rounded-2xl border border-slate-900 bg-slate-900/20 backdrop-blur-sm overflow-hidden">
-                        <div className="p-4 border-b border-slate-900 bg-slate-900/10 flex items-center justify-between">
-                            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Biblioteca de Jingles</h3>
-                            <button className="text-[10px] text-indigo-400 font-bold hover:underline flex items-center gap-1">
-                                <Plus className="w-3.5 h-3.5" /> Subir Jingle
-                            </button>
+                <div className="lg:col-span-7">
+                    <div className="rounded-2xl border border-slate-900 bg-slate-950/40 overflow-hidden">
+                        <div className="p-4 border-b border-slate-900 flex items-center gap-2">
+                            <Music className="w-4 h-4 text-indigo-400"/><h3 className="text-xs font-bold text-slate-300 uppercase">Archivos ({jingles.length})</h3>
                         </div>
-                        <div className="p-5 space-y-3">
-                            {jingles.map((jingle) => (
-                                <div key={jingle.id} className="p-3 bg-slate-950 border border-slate-900 rounded-xl flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-lg">
-                                            <Music className="w-4 h-4" />
-                                        </div>
-                                        <div>
-                                            <span className="text-xs font-bold text-slate-300 block">{jingle.name}</span>
-                                            <span className="text-[9px] text-slate-500 block font-mono mt-0.5">{jingle.filename}</span>
+                        <div className="p-4 space-y-2 max-h-[500px] overflow-y-auto">
+                            {loading ? <div className="text-center py-8 text-slate-500 text-sm">Cargando...</div> :
+                             jingles.length === 0 ? <div className="text-center py-12 text-slate-500"><Volume2 className="w-8 h-8 mx-auto mb-2 text-slate-600"/><p className="text-sm">Sin jingles</p><p className="text-[10px] text-slate-600 mt-0.5">Sube tu primer jingle</p></div> :
+                             jingles.map(j => (
+                                <div key={j.id} className={`p-3 rounded-xl border flex items-center justify-between gap-3 transition-all ${j.is_active ? 'border-indigo-500/20 bg-indigo-500/5' : 'border-slate-900 bg-slate-950'}`}>
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <button onClick={() => setPlaying(playing === j.id ? null : j.id)} className="p-2 bg-indigo-500/10 text-indigo-400 rounded-lg hover:bg-indigo-500/20 transition-all">
+                                            {playing === j.id ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                                        </button>
+                                        <div className="min-w-0">
+                                            <p className="text-xs font-bold text-slate-300 truncate">{j.name}</p>
+                                            <p className="text-[9px] text-slate-500 font-mono truncate">{j.filename}</p>
                                         </div>
                                     </div>
-                                    <span className="text-[10px] font-mono text-slate-500">{jingle.duration}</span>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <span className="text-[10px] text-slate-500 font-mono">{formatDuration(j.duration)}</span>
+                                        <button onClick={() => toggleJingle(j)} title={j.is_active ? 'Desactivar' : 'Activar'}>
+                                            {j.is_active ? <ToggleRight className="w-5 h-5 text-indigo-400" /> : <ToggleLeft className="w-5 h-5 text-slate-600" />}
+                                        </button>
+                                        <button onClick={() => deleteJingle(j)} className="p-1 text-slate-600 hover:text-red-400 transition-colors"><Trash2 className="w-4 h-4"/></button>
+                                    </div>
                                 </div>
                             ))}
                         </div>
                     </div>
                 </div>
             </div>
+
+            {showUpload && (
+                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-md mx-4">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-sm font-bold text-white">Subir Jingle</h3>
+                            <button onClick={() => setShowUpload(false)} className="text-slate-500 hover:text-white"><X className="w-5 h-5"/></button>
+                        </div>
+                        <form onSubmit={uploadJingle} className="space-y-4">
+                            <div>
+                                <label className="text-[10px] text-slate-500 uppercase block mb-1.5">Nombre</label>
+                                <input type="text" value={formData.name} onChange={e => setFormData({ name: e.target.value })} required
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-indigo-500 text-slate-200" placeholder="Identificación de emisora" />
+                            </div>
+                            <div>
+                                <label className="text-[10px] text-slate-500 uppercase block mb-1.5">Archivo (MP3, WAV, OGG)</label>
+                                <input type="file" ref={fileRef} accept=".mp3,.wav,.ogg,.flac" required
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs outline-none text-slate-200 file:hidden" />
+                            </div>
+                            <div className="flex gap-2 pt-2">
+                                <button type="button" onClick={() => setShowUpload(false)} className="flex-1 px-4 py-2.5 bg-slate-800 border border-slate-700 text-slate-400 text-xs font-bold rounded-xl hover:text-white transition-all">Cancelar</button>
+                                <button type="submit" className="flex-1 px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-bold rounded-xl transition-all">Subir</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </AudioStationLayout>
     );
 }

@@ -84,4 +84,19 @@ class Station extends Model
     {
         return $this->hasMany(MediaFile::class);
     }
+
+    public function jingles()
+    {
+        return $this->hasMany(\Modules\AutoDJ\Models\Jingle::class);
+    }
+
+    public function scheduleSlots()
+    {
+        return $this->hasMany(\Modules\AutoDJ\Models\ScheduleSlot::class);
+    }
+
+    public function mountPoints()
+    {
+        return $this->hasMany(\Modules\AutoDJ\Models\MountPoint::class);
+    }
 }
