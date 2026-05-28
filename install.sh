@@ -291,6 +291,7 @@ fi
 cmdout "Generando APP_KEY y ejecutando migraciones..."
 docker exec tuistream_app php artisan key:generate --force
 docker exec tuistream_app php artisan migrate --force
+docker exec tuistream_app php artisan optimize
 docker exec tuistream_app php artisan storage:link 2>/dev/null || true
 
 # Configurar permisos

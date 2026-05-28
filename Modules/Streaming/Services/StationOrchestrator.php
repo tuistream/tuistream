@@ -229,6 +229,15 @@ CONF;
      */
     public function getRealStats(Station $station): array
     {
+        $cacheKey = "station_stats:{$station->id}";
+
+        return cache()->remember($cacheKey, 5, function () use ($station) {
+            return $this->fetchRealStats($station);
+        });
+    }
+
+    private function fetchRealStats(Station $station): array
+    {
         $listeners = 0;
         $nowPlaying = 'Estación fuera de línea';
 

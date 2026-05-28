@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 
 class Setting extends Model
 {
@@ -17,28 +18,26 @@ class Setting extends Model
         'value' => 'string',
     ];
 
-    /**
-     * Obtener un setting por key, con valor por defecto.
-     */
+    private static ?array $loadedSettings = null;
+
     public static function get(string $key, mixed $default = null): mixed
     {
-        $setting = static::where('key', $key)->first();
+        self::loadAll();
 
-        if (! $setting) {
-            return $default;
+        if (isset(self::$loadedSettings[$key])) {
+            $entry = self::$loadedSettings[$key];
+
+            return match ($entry['type']) {
+                'json' => json_decode($entry['value'], true),
+                'boolean' => (bool) $entry['value'],
+                'integer' => (int) $entry['value'],
+                default => $entry['value'],
+            };
         }
 
-        return match ($setting->type) {
-            'json' => json_decode($setting->value, true),
-            'boolean' => (bool) $setting->value,
-            'integer' => (int) $setting->value,
-            default => $setting->value,
-        };
+        return $default;
     }
 
-    /**
-     * Guardar o actualizar un setting.
-     */
     public static function set(string $key, mixed $value, string $type = 'string', string $group = 'general'): void
     {
         if (is_array($value)) {
@@ -56,5 +55,26 @@ class Setting extends Model
             ['key' => $key],
             ['value' => $value, 'type' => $type, 'group' => $group]
         );
+
+        self::$loadedSettings = null;
+        Cache::forget('settings:all');
+    }
+
+    private static function loadAll(): void
+    {
+        if (self::$loadedSettings !== null) {
+            return;
+        }
+
+        self::$loadedSettings = Cache::rememberForever('settings:all', function () {
+            $map = [];
+            foreach (static::select('key', 'value', 'type')->get() as $row) {
+                $map[$row->key] = [
+                    'value' => $row->value,
+                    'type' => $row->type,
+                ];
+            }
+            return $map;
+        });
     }
 }
