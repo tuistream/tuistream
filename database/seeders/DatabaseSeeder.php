@@ -2,31 +2,74 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use App\Models\User;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\Models\Permission;
 
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
     public function run(): void
     {
-        $defaultPass = env('SEED_ADMIN_PASSWORD', 'admin@123_tuistream');
-        $clientPass = env('SEED_CLIENT_PASSWORD', 'client@123_tuistream');
+        // Create roles (idempotent)
+        $adminRole = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $clientRole = Role::firstOrCreate(['name' => 'client', 'guard_name' => 'web']);
 
-        User::factory()->create([
-            'name' => 'TuiStream Admin',
-            'email' => env('SEED_ADMIN_EMAIL', 'admin@localhost'),
-            'password' => bcrypt($defaultPass),
-            'role' => 'super_admin',
+        // Create permissions
+        $permissions = [
+            'manage-stations',
+            'manage-tv-channels',
+            'manage-clients',
+            'manage-media',
+            'manage-playlists',
+            'manage-schedules',
+            'view-statistics',
+            'view-audit-logs',
+            'manage-settings',
+            'upload-media',
+            'manage-dj-accounts',
+            'start-streaming',
+        ];
+
+        foreach ($permissions as $permission) {
+            Permission::firstOrCreate(['name' => $permission, 'guard_name' => 'web']);
+        }
+
+        // Assign all permissions to admin
+        $adminRole->syncPermissions(Permission::all());
+
+        // Assign limited permissions to client
+        $clientRole->syncPermissions([
+            'upload-media',
+            'manage-playlists',
+            'manage-schedules',
+            'view-statistics',
+            'start-streaming',
+            'manage-dj-accounts',
         ]);
 
-        User::factory()->create([
-            'name' => 'Demo Cliente',
-            'email' => env('SEED_CLIENT_EMAIL', 'cliente@localhost'),
-            'password' => bcrypt($clientPass),
-            'role' => 'client',
-        ]);
+        // Create admin user (idempotent)
+        $admin = User::firstOrCreate(
+            ['email' => 'info@hostuis.com'],
+            [
+                'name' => 'Administrador',
+                'password' => bcrypt('Emely.2012@#'),
+                'email_verified_at' => now(),
+                'timezone' => 'America/Mexico_City',
+            ]
+        );
+        $admin->assignRole('admin');
+
+        // Create demo client (idempotent)
+        $client = User::firstOrCreate(
+            ['email' => 'cliente@tuistream.local'],
+            [
+                'name' => 'Cliente Demo',
+                'password' => bcrypt('password'),
+                'email_verified_at' => now(),
+                'timezone' => 'America/Mexico_City',
+            ]
+        );
+        $client->assignRole('client');
     }
 }

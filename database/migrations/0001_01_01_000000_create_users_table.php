@@ -6,9 +6,6 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('users', function (Blueprint $table) {
@@ -17,8 +14,17 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
-            $table->string('role')->default('client'); // super_admin, reseller, client, dj, station_manager
-            $table->foreignId('parent_id')->nullable()->constrained('users')->onDelete('cascade'); // Para revendedores
+            $table->string('avatar')->nullable();
+            $table->string('timezone')->default('UTC');
+            $table->boolean('is_active')->default(true);
+            $table->boolean('is_suspended')->default(false);
+            $table->timestamp('suspended_at')->nullable();
+            $table->text('suspended_reason')->nullable();
+            $table->timestamp('last_login_at')->nullable();
+            $table->string('last_login_ip')->nullable();
+            $table->boolean('two_factor_enabled')->default(false);
+            $table->text('two_factor_secret')->nullable();
+            $table->text('two_factor_recovery_codes')->nullable();
             $table->rememberToken();
             $table->timestamps();
         });
@@ -39,9 +45,6 @@ return new class extends Migration
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('users');

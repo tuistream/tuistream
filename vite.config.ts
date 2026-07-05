@@ -1,30 +1,31 @@
 import { defineConfig } from 'vite';
 import laravel from 'laravel-vite-plugin';
-import react from '@vitejs/plugin-react';
+import vue from '@vitejs/plugin-vue';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
     plugins: [
         laravel({
-            input: ['resources/css/app.css', 'resources/js/app.tsx'],
+            input: ['resources/js/app.ts', 'resources/css/app.css'],
             refresh: true,
         }),
-        react(),
+        vue({
+            template: {
+                transformAssetUrls: {
+                    base: null,
+                    includeAbsolute: false,
+                },
+            },
+        }),
         tailwindcss(),
     ],
+    server: {
+        host: '127.0.0.1',
+    },
     resolve: {
         alias: {
             '@': '/resources/js',
-        },
-    },
-    server: {
-        host: '0.0.0.0',
-        port: 5173,
-        hmr: {
-            host: 'localhost',
-        },
-        watch: {
-            ignored: ['**/storage/framework/views/**'],
+            'ziggy-js': '/node_modules/ziggy-js',
         },
     },
 });

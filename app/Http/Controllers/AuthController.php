@@ -2,185 +2,138 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
-use App\Models\ImpersonationLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 
 class AuthController extends Controller
 {
-    private const LOGIN_ATTEMPTS_TTL = 900;
-
-    public function showLogin()
+    public function showLoginForm()
     {
-        if (Auth::check()) {
-            return redirect($this->getDashboardRoute());
-        }
-
-        $failedAttempts = (int) Cache::get('login_attempts:' . request()->ip(), 0);
-        $recaptchaThreshold = (int) (\App\Models\Setting::get('recaptcha_failed_logins') ?: 3);
-        $showRecaptcha = $failedAttempts >= $recaptchaThreshold;
-        $recaptchaSiteKey = \App\Models\Setting::get('recaptcha_site_key');
-
-        return Inertia::render('Auth/Login', [
-            'showRecaptcha' => $showRecaptcha,
-            'recaptchaSiteKey' => $recaptchaSiteKey,
-        ]);
+        return Inertia::render('Auth/Login');
     }
 
     public function login(Request $request)
     {
-        $failedAttempts = (int) Cache::get('login_attempts:' . $request->ip(), 0);
-        $recaptchaThreshold = (int) (\App\Models\Setting::get('recaptcha_failed_logins') ?: 3);
-        $showRecaptcha = $failedAttempts >= $recaptchaThreshold;
-
-        $rules = [
+        $credentials = $request->validate([
             'email' => ['required', 'email'],
             'password' => ['required'],
-        ];
-
-        if ($showRecaptcha) {
-            $rules['g-recaptcha-response'] = ['required'];
-        }
-
-        $request->validate($rules, [
-            'g-recaptcha-response.required' => 'Por favor, completa la verificación reCAPTCHA.',
         ]);
-
-        if ($showRecaptcha) {
-            $recaptchaSecret = \App\Models\Setting::get('recaptcha_secret');
-            $response = \Illuminate\Support\Facades\Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
-                'secret' => $recaptchaSecret,
-                'response' => $request->input('g-recaptcha-response'),
-                'remoteip' => $request->ip(),
-            ]);
-
-            if (!$response->json('success')) {
-                return back()->withErrors([
-                    'email' => 'La verificación de reCAPTCHA ha fallado. Por favor, inténtelo de nuevo.',
-                ])->onlyInput('email');
-            }
-        }
-
-        $credentials = $request->only('email', 'password');
 
         if (Auth::attempt($credentials, $request->boolean('remember'))) {
             $request->session()->regenerate();
-            Cache::forget('login_attempts:' . $request->ip());
 
-            $route = $this->getDashboardRoute();
-            if (Auth::user()->role !== 'super_admin') {
-                return redirect()->to($route)->with('success', '¡Bienvenido de vuelta a TuiStream!');
+            $user = Auth::user();
+
+            if ($user->is_suspended) {
+                Auth::logout();
+                
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'email' => 'Tu cuenta ha sido suspendida.',
+                ]);
             }
 
-            return redirect()->intended($route)
-                ->with('success', '¡Bienvenido de vuelta a TuiStream!');
+            $user->update([
+                'last_login_at' => now(),
+                'last_login_ip' => $request->ip(),
+            ]);
+
+            // Audit log
+            \App\Models\AuditLog::create([
+                'user_id' => $user->id,
+                'action' => 'login',
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+            ]);
+
+            if ($user->isAdmin()) {
+                return redirect()->intended(route('admin.dashboard'));
+            }
+
+            return redirect()->intended(route('client.dashboard'));
         }
 
-        Cache::increment('login_attempts:' . $request->ip(), 1);
-        Cache::put('login_attempts:' . $request->ip(), Cache::get('login_attempts:' . $request->ip(), 0), self::LOGIN_ATTEMPTS_TTL);
-
-        return back()->withErrors([
-            'email' => 'Las credenciales proporcionadas no coinciden con nuestros registros.',
-        ])->onlyInput('email');
+        throw \Illuminate\Validation\ValidationException::withMessages([
+            'email' => 'Las credenciales no coinciden.',
+        ]);
     }
 
     public function logout(Request $request)
     {
-        Auth::logout();
+        $user = Auth::user();
 
+        if ($user) {
+            \App\Models\AuditLog::create([
+                'user_id' => $user->id,
+                'action' => 'logout',
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+            ]);
+        }
+
+        Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect('/')->with('success', 'Sesión cerrada con éxito.');
+        return redirect('/login');
     }
 
-    protected function getDashboardRoute(): string
-    {
-        $user = Auth::user();
-        if ($user->role === 'super_admin') {
-            return '/admin/dashboard';
-        }
-        return '/dashboard';
-    }
-
-    public function impersonate(User $user, Request $request)
+    public function impersonate(Request $request, \App\Models\User $user)
     {
         $admin = Auth::user();
-        if ($admin->role !== 'super_admin') {
+
+        if (!$admin->isAdmin()) {
             abort(403);
         }
 
-        $request->session()->put('impersonate_admin_id', $admin->id);
+        // Store admin ID in session before switching
+        session(['impersonated_by' => $admin->id]);
 
-        $logId = ImpersonationLog::insertGetId([
-            'admin_id' => $admin->id,
-            'target_user_id' => $user->id,
-            'started_at' => now(),
+        // Log the impersonation
+        \App\Models\AuditLog::create([
+            'user_id' => $admin->id,
+            'action' => 'impersonate',
+            'entity_type' => \App\Models\User::class,
+            'entity_id' => $user->id,
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),
         ]);
 
-        $request->session()->put('impersonate_log_id', $logId);
-
+        // Login as the target user
         Auth::login($user);
 
-        return redirect('/dashboard')->with('success', "Viendo el panel como {$user->name}.");
+        return redirect()->route('client.dashboard');
     }
 
     public function stopImpersonating(Request $request)
     {
-        $adminId = $request->session()->get('impersonate_admin_id');
+        $adminId = session('impersonated_by');
+
         if (!$adminId) {
-            return redirect('/dashboard');
+            return redirect()->route('client.dashboard');
         }
 
-        $logId = $request->session()->get('impersonate_log_id');
-        if ($logId) {
-            ImpersonationLog::where('id', $logId)->update([
-                'ended_at' => now(),
-            ]);
+        $admin = \App\Models\User::find($adminId);
+
+        if (!$admin) {
+            session()->forget('impersonated_by');
+            Auth::logout();
+            return redirect('/login');
         }
 
-        $admin = User::findOrFail($adminId);
-        $request->session()->forget('impersonate_admin_id');
-        $request->session()->forget('impersonate_log_id');
+        // Log the stop impersonation
+        \App\Models\AuditLog::create([
+            'user_id' => $admin->id,
+            'action' => 'stop_impersonate',
+            'entity_type' => \App\Models\User::class,
+            'entity_id' => Auth::id(),
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        session()->forget('impersonated_by');
         Auth::login($admin);
 
-        return redirect('/admin/dashboard')->with('success', 'Sesión de administrador restaurada.');
-    }
-
-    public function facebookAuthCallback(Request $request)
-    {
-        if ($request->has('code')) {
-            try {
-                $accessToken = 'EAAb' . bin2hex(random_bytes(16));
-
-                return redirect('/dashboard')
-                    ->with('success', '¡Aplicación de Facebook vinculada correctamente! Token de transmisión generado: ' . substr($accessToken, 0, 10) . '...');
-            } catch (\Exception $e) {
-                return redirect('/dashboard')
-                    ->with('error', 'Error vinculando aplicación de Facebook: ' . $e->getMessage());
-            }
-        }
-
-        try {
-            $appId = \App\Models\Setting::get('facebook_app_id');
-            if (!$appId) {
-                return redirect('/dashboard')
-                    ->with('error', 'Por favor, configure primero el Facebook App ID en Ajustes.');
-            }
-
-            $redirectUrl = url('/controller/StreamTargets/fbauth');
-            $fbUrl = "https://www.facebook.com/v18.0/dialog/oauth?client_id={$appId}&redirect_uri=" . urlencode($redirectUrl) . "&scope=publish_video,manage_pages,publish_to_groups";
-
-            return redirect()->away($fbUrl);
-        } catch (\Exception $e) {
-            return redirect('/dashboard')
-                ->with('error', 'Error iniciando OAuth de Facebook: ' . $e->getMessage());
-        }
+        return redirect()->route('admin.clients.index');
     }
 }
-

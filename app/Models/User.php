@@ -2,89 +2,81 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Database\Factories\UserFactory;
-use Illuminate\Database\Eloquent\Attributes\Fillable;
-use Illuminate\Database\Eloquent\Attributes\Hidden;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
+use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, HasRoles;
 
     protected $fillable = [
         'name',
-        'username',
         'email',
-        'phone',
         'password',
-        'role',
-        'status',
-        'api_access',
-        'api_token',
-        'send_welcome_email',
-        'parent_id',
+        'avatar',
+        'timezone',
+        'is_active',
+        'is_suspended',
+        'suspended_at',
+        'suspended_reason',
+        'last_login_at',
+        'last_login_ip',
+        'two_factor_enabled',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
     ];
 
     protected $hidden = [
         'password',
         'remember_token',
-        'api_token',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
     ];
 
-    /**
-     * Relación con el revendedor padre (si aplica).
-     */
-    public function parent()
-    {
-        return $this->belongsTo(User::class, 'parent_id');
-    }
-
-    /**
-     * Relación con los clientes creados (si es un revendedor).
-     */
-    public function children()
-    {
-        return $this->hasMany(User::class, 'parent_id');
-    }
-
-    /**
-     * Relación con las estaciones de streaming del usuario.
-     */
-    public function stations()
-    {
-        return $this->hasMany(\Modules\Stations\Models\Station::class);
-    }
-
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
-            'send_welcome_email' => 'boolean',
+            'is_active' => 'boolean',
+            'is_suspended' => 'boolean',
+            'suspended_at' => 'datetime',
+            'last_login_at' => 'datetime',
+            'two_factor_enabled' => 'boolean',
         ];
     }
 
-    public function generateApiToken(): string
+    public function isAdmin(): bool
     {
-        $plainToken = 'tui_' . bin2hex(random_bytes(32));
-        $this->api_token = hash('sha256', $plainToken);
-        $this->save();
-
-        return $plainToken;
+        return $this->hasRole('admin');
     }
 
-    public function revokeApiToken(): void
+    public function isClient(): bool
     {
-        $this->api_token = null;
-        $this->save();
+        return $this->hasRole('client');
+    }
+
+    public function stations(): HasMany
+    {
+        return $this->hasMany(Station::class, 'client_id');
+    }
+
+    public function channels(): HasMany
+    {
+        return $this->hasMany(TvChannel::class, 'client_id');
+    }
+
+    public function media(): HasMany
+    {
+        return $this->hasMany(Media::class, 'client_id');
+    }
+
+    public function auditLogs(): HasMany
+    {
+        return $this->hasMany(AuditLog::class, 'user_id');
     }
 }

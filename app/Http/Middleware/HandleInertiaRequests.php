@@ -2,57 +2,58 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Setting;
+use Closure;
 use Illuminate\Http\Request;
-use Inertia\Middleware;
+use Illuminate\Support\Facades\Auth;
+use Inertia\Inertia;
 
-class HandleInertiaRequests extends Middleware
+class HandleInertiaRequests
 {
-    /**
-     * The root template that's loaded on the first page visit.
-     *
-     * @see https://inertiajs.com/server-side-setup#root-template
-     * @var string
-     */
-    protected $rootView = 'app';
-
-    /**
-     * Determines the current asset version.
-     *
-     * @see https://inertiajs.com/asset-versioning
-     */
-    public function version(Request $request): ?string
+    public function handle(Request $request, Closure $next)
     {
-        return parent::version($request);
-    }
-
-    /**
-     * Define the data that is shared by default.
-     *
-     * @see https://inertiajs.com/shared-data
-     *
-     * @return array<string, mixed>
-     */
-    public function share(Request $request): array
-    {
-        return array_merge(parent::share($request), [
+        Inertia::share([
             'auth' => [
-                'user' => $request->user() ? [
-                    'id' => $request->user()->id,
-                    'name' => $request->user()->name,
-                    'email' => $request->user()->email,
-                    'role' => $request->user()->role ?? 'client', // super_admin, reseller, client, dj
-                ] : null,
+                'user' => function () use ($request) {
+                    if (Auth::check()) {
+                        $user = Auth::user();
+                        $impersonatedById = $request->session()->get('impersonated_by');
+                        $impersonatedBy = $impersonatedById ? \App\Models\User::find($impersonatedById) : null;
+
+                        return [
+                            'id' => $user->id,
+                            'name' => $user->name,
+                            'email' => $user->email,
+                            'avatar' => $user->avatar,
+                            'roles' => $user->getRoleNames(),
+                            'permissions' => $user->getAllPermissions()->pluck('name'),
+                            'impersonated_by' => $impersonatedBy ? [
+                                'id' => $impersonatedBy->id,
+                                'name' => $impersonatedBy->name,
+                            ] : null,
+                        ];
+                    }
+                    return null;
+                },
             ],
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
+                'warning' => fn () => $request->session()->get('warning'),
             ],
             'app' => [
-                'logo' => \App\Models\Setting::get('app_logo', ''),
-                'favicon' => \App\Models\Setting::get('app_favicon', ''),
-                'name' => \App\Models\Setting::get('app_name', 'TuiStream'),
+                'name' => config('app.name'),
+                'version' => config('tuistream.version'),
             ],
-            'isImpersonating' => (bool) $request->session()->get('impersonate_admin_id'),
+            'branding' => [
+                'app_name' => Setting::getValue('app_name', config('app.name')),
+                'app_description' => Setting::getValue('app_description', 'Panel de Control de Streaming'),
+                'logo_url' => Setting::getValue('app_logo_url'),
+                'logo_dark_url' => Setting::getValue('app_logo_dark_url'),
+                'favicon_url' => Setting::getValue('app_favicon_url'),
+            ],
         ]);
+
+        return $next($request);
     }
 }

@@ -1,273 +1,81 @@
 <?php
 
-use App\Http\Controllers\AuthController;
-use App\Http\Controllers\AdminBackupController;
-use App\Http\Controllers\AdminDashboardController;
-use App\Http\Controllers\AdminFeatureController;
-use App\Http\Controllers\AdminSettingsController;
-use App\Http\Controllers\AdminStatisticsController;
-use App\Http\Controllers\ClientDashboardController;
-use App\Http\Controllers\ClientStationController;
-use App\Http\Controllers\SetupController;
-use App\Http\Controllers\WelcomeController;
-use App\Http\Controllers\AdminEmailTemplateController;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Client\DashboardController as ClientDashboardController;
 
-// Health Check — Monitoreo externo
-Route::get('/health', function () {
-    return response()->json([
-        'status' => 'ok',
-        'timestamp' => now()->toIso8601String(),
-        'version' => app()->version(),
-    ]);
-});
-
-// Landing Page de Bienvenida
-Route::get('/', function () {
-    return Inertia::render('Welcome');
-});
-
-// ── Wizard de Instalación / Primer Inicio ──────────────────────────────────
-// Solo se muestra si no hay ningún administrador creado aún.
-Route::get('/setup', [SetupController::class, 'index'])->name('setup.index');
-Route::get('/setup/account', [SetupController::class, 'account'])->name('setup.account');
-Route::post('/setup/create-admin', [SetupController::class, 'createAdmin'])->name('setup.create-admin');
-Route::get('/setup/finalize', [SetupController::class, 'finalize'])->name('setup.finalize');
-
-// Páginas Públicas de Streaming (Sin Autenticación)
-Route::get('/public/station/{slug}', [ClientStationController::class, 'viewPublicAudio'])->name('public.station.view');
-Route::get('/public/canaltv/{slug}', [ClientStationController::class, 'viewPublicVideo'])->name('public.canaltv.view');
-
-// Facebook Stream Targets OAuth Callback
-Route::get('/controller/StreamTargets/fbauth', [AuthController::class, 'facebookAuthCallback']);
-
-// Rutas de Autenticación (Invitados)
+// Guest routes
 Route::middleware('guest')->group(function () {
-    Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
-    Route::post('/login', [AuthController::class, 'login'])->middleware(['throttle:login', 'throttle:login-ip']);
+    Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
+    Route::post('/login', [AuthController::class, 'login']);
 });
 
-// Cerrar sesión (Cualquier usuario autenticado)
-Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth');
-Route::post('/admin/stop-impersonating', [AuthController::class, 'stopImpersonating'])->middleware('auth');
-
-// Rutas del Panel del Cliente (Requiere autenticación)
+// Auth routes
 Route::middleware('auth')->group(function () {
-    Route::get('/dashboard', [ClientDashboardController::class, 'index'])->name('dashboard');
-    Route::get('/dashboard/profile', [ClientDashboardController::class, 'showProfile'])->name('client.profile');
-    Route::post('/dashboard/profile', [ClientDashboardController::class, 'updateProfile']);
-    Route::post('/station/{station}/toggle', [ClientDashboardController::class, 'toggleStatus']);
-    Route::post('/station/{station}/restart', [ClientDashboardController::class, 'restartStation']);
+    Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
-    // Rutas para Streaming de Audio (Radio)
-    Route::get('/dashboard/station/{station}', [ClientStationController::class, 'showAudio'])->name('client.station.show');
-    Route::get('/dashboard/station/{station}/config', [ClientStationController::class, 'configAudio'])->name('client.station.config');
-    Route::get('/dashboard/station/{station}/media', [ClientStationController::class, 'mediaAudio'])->name('client.station.media');
-    Route::get('/dashboard/station/{station}/playlists', [ClientStationController::class, 'playlistsAudio'])->name('client.station.playlists');
-    Route::get('/dashboard/station/{station}/jingles', [ClientStationController::class, 'jinglesAudio'])->name('client.station.jingles');
-    Route::get('/dashboard/station/{station}/schedule', [ClientStationController::class, 'scheduleAudio'])->name('client.station.schedule');
-    Route::get('/dashboard/station/{station}/widgets', [ClientStationController::class, 'widgetsAudio'])->name('client.station.widgets');
-    Route::get('/dashboard/station/{station}/public', [ClientStationController::class, 'publicAudio'])->name('client.station.public');
-    Route::get('/dashboard/station/{station}/mount-points', [ClientStationController::class, 'mountPointsAudio'])->name('client.station.mountpoints');
-    Route::get('/dashboard/station/{station}/djs', [ClientStationController::class, 'djsAudio'])->name('client.station.djs');
-    Route::get('/dashboard/station/{station}/song-title', [ClientStationController::class, 'songTitleAudio'])->name('client.station.songtitle');
-    Route::get('/dashboard/station/{station}/logs', [ClientStationController::class, 'logsAudio'])->name('client.station.logs');
-    Route::get('/dashboard/station/{station}/reports', [ClientStationController::class, 'reportsAudio'])->name('client.station.reports');
-    Route::get('/dashboard/station/{station}/suspend', [ClientStationController::class, 'suspendAudio'])->name('client.station.suspend');
-    Route::get('/dashboard/station/{station}/delete', [ClientStationController::class, 'deleteAudio'])->name('client.station.delete');
+    // Admin routes
+    Route::middleware('admin')->prefix('admin')->name('admin.')->group(function () {
+        Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('dashboard');
 
-    Route::post('/dashboard/station/{station}/config', [ClientStationController::class, 'updateConfig']);
-    Route::post('/dashboard/station/{station}/toggle', [ClientStationController::class, 'toggleStatus']);
-    Route::post('/dashboard/station/{station}/restart', [ClientStationController::class, 'restartStation']);
-    Route::post('/dashboard/station/{station}/media', [ClientStationController::class, 'uploadFile']);
-    Route::delete('/dashboard/station/{station}/media/{file}', [ClientStationController::class, 'deleteFile']);
-    Route::post('/dashboard/station/{station}/suspend', [ClientStationController::class, 'suspendStation']);
-    Route::post('/dashboard/station/{station}/delete', [ClientStationController::class, 'deleteStation']);
+        // Impersonate client
+        Route::post('/impersonate/{user}', [AuthController::class, 'impersonate'])->name('impersonate');
+        Route::post('/stop-impersonating', [AuthController::class, 'stopImpersonating'])->name('stop-impersonating');
 
-    // DJs CRUD
-    Route::get('/dashboard/station/{station}/djs/list', [ClientStationController::class, 'djsList'])->name('client.station.djs.list');
-    Route::post('/dashboard/station/{station}/djs/store', [ClientStationController::class, 'djsStore'])->name('client.station.djs.store');
-    Route::put('/dashboard/station/{station}/djs/{dj}', [ClientStationController::class, 'djsUpdate'])->name('client.station.djs.update');
-    Route::delete('/dashboard/station/{station}/djs/{dj}', [ClientStationController::class, 'djsDestroy'])->name('client.station.djs.destroy');
-    Route::post('/dashboard/station/{station}/djs/{dj}/toggle', [ClientStationController::class, 'djsToggle'])->name('client.station.djs.toggle');
+        // Placeholder routes for admin sections
+        Route::get('/stations', fn () => inertia('Admin/Stations/Index'))->name('stations.index');
+        Route::get('/stations/create', fn () => inertia('Admin/Stations/Create'))->name('stations.create');
+        Route::get('/stations/{id}', fn () => inertia('Admin/Stations/Edit'))->name('stations.edit');
 
-    // Playlists CRUD
-    Route::get('/dashboard/station/{station}/playlists/list', [ClientStationController::class, 'playlistsList'])->name('client.station.playlists.list');
-    Route::post('/dashboard/station/{station}/playlists/store', [ClientStationController::class, 'playlistsStore'])->name('client.station.playlists.store');
-    Route::put('/dashboard/station/{station}/playlists/{playlist}', [ClientStationController::class, 'playlistsUpdate'])->name('client.station.playlists.update');
-    Route::delete('/dashboard/station/{station}/playlists/{playlist}', [ClientStationController::class, 'playlistsDestroy'])->name('client.station.playlists.destroy');
-    Route::post('/dashboard/station/{station}/playlists/{playlist}/toggle', [ClientStationController::class, 'playlistsToggle'])->name('client.station.playlists.toggle');
-    Route::post('/dashboard/station/{station}/playlists/{playlist}/add-media', [ClientStationController::class, 'playlistsAddMedia'])->name('client.station.playlists.add-media');
-    Route::post('/dashboard/station/{station}/playlists/{playlist}/remove-media', [ClientStationController::class, 'playlistsRemoveMedia'])->name('client.station.playlists.remove-media');
-    Route::get('/dashboard/station/{station}/playlists/{playlist}/media', [ClientStationController::class, 'playlistsShow'])->name('client.station.playlists.media');
+        Route::get('/tv-channels', fn () => inertia('Admin/TvChannels/Index'))->name('tv-channels.index');
+        Route::get('/tv-channels/create', fn () => inertia('Admin/TvChannels/Create'))->name('tv-channels.create');
+        Route::get('/tv-channels/{id}', fn () => inertia('Admin/TvChannels/Edit'))->name('tv-channels.edit');
 
-    // Jingles CRUD
-    Route::get('/dashboard/station/{station}/jingles/list', [ClientStationController::class, 'jinglesList'])->name('client.station.jingles.list');
-    Route::post('/dashboard/station/{station}/jingles/store', [ClientStationController::class, 'jinglesStore'])->name('client.station.jingles.store');
-    Route::put('/dashboard/station/{station}/jingles/{jingle}', [ClientStationController::class, 'jinglesUpdate'])->name('client.station.jingles.update');
-    Route::delete('/dashboard/station/{station}/jingles/{jingle}', [ClientStationController::class, 'jinglesDestroy'])->name('client.station.jingles.destroy');
-    Route::post('/dashboard/station/{station}/jingles/settings', [ClientStationController::class, 'jinglesSettings'])->name('client.station.jingles.settings');
+        Route::get('/clients', fn () => inertia('Admin/Clients/Index', [
+            'clients' => \App\Models\User::role('client')
+                ->withCount('stations')
+                ->orderBy('created_at', 'desc')
+                ->paginate(25),
+        ]))->name('clients.index');
+        Route::get('/clients/create', fn () => inertia('Admin/Clients/Create'))->name('clients.create');
+        Route::get('/clients/{id}', fn () => inertia('Admin/Clients/Edit'))->name('clients.edit');
 
-    // Schedule CRUD
-    Route::get('/dashboard/station/{station}/schedule/list', [ClientStationController::class, 'scheduleList'])->name('client.station.schedule.list');
-    Route::post('/dashboard/station/{station}/schedule/store', [ClientStationController::class, 'scheduleStore'])->name('client.station.schedule.store');
-    Route::delete('/dashboard/station/{station}/schedule/{slot}', [ClientStationController::class, 'scheduleDestroy'])->name('client.station.schedule.destroy');
+        Route::get('/media', fn () => inertia('Admin/Media/Index'))->name('media.index');
 
-    // Mount Points CRUD
-    Route::get('/dashboard/station/{station}/mount-points/list', [ClientStationController::class, 'mountPointsList'])->name('client.station.mount-points.list');
-    Route::post('/dashboard/station/{station}/mount-points/store', [ClientStationController::class, 'mountPointsStore'])->name('client.station.mount-points.store');
-    Route::put('/dashboard/station/{station}/mount-points/{mount}', [ClientStationController::class, 'mountPointsUpdate'])->name('client.station.mount-points.update');
-    Route::delete('/dashboard/station/{station}/mount-points/{mount}', [ClientStationController::class, 'mountPointsDestroy'])->name('client.station.mount-points.destroy');
+        Route::get('/monitoring', fn () => inertia('Admin/Monitoring/Index'))->name('monitoring.index');
+        Route::get('/audit-logs', fn () => inertia('Admin/AuditLogs/Index'))->name('audit-logs.index');
+        Route::get('/settings', fn () => inertia('Admin/Settings/Index'))->name('settings.index');
+        Route::get('/live-streaming', fn () => inertia('Admin/LiveStreaming/Index'))->name('live-streaming.index');
+        Route::get('/tv-channels/{id}/schedule', fn () => inertia('Admin/TvChannels/Schedule'))->name('tv-channels.schedule');
+        Route::get('/api-docs', fn () => inertia('Admin/ApiDocs/Index'))->name('api-docs.index');
+    });
 
-    // Song Title / Metadata
-    Route::get('/dashboard/station/{station}/song-title', [ClientStationController::class, 'songTitleAudio'])->name('client.station.song-title');
-    Route::post('/dashboard/station/{station}/song-title/update', [ClientStationController::class, 'songTitleUpdate'])->name('client.station.song-title.update');
+    // Client routes
+    Route::middleware('client')->prefix('client')->name('client.')->group(function () {
+        Route::get('/dashboard', [ClientDashboardController::class, 'index'])->name('dashboard');
 
-    // Widgets
-    Route::get('/dashboard/station/{station}/widgets', [ClientStationController::class, 'widgetsAudio'])->name('client.station.widgets');
-    Route::post('/dashboard/station/{station}/widgets/save', [ClientStationController::class, 'widgetsSave'])->name('client.station.widgets.save');
+        Route::get('/stations', fn () => inertia('Client/Stations/Index'))->name('stations.index');
+        Route::get('/stations/{id}', fn () => inertia('Client/Stations/Show'))->name('stations.show');
+        Route::get('/stations/{id}/autodj', fn () => inertia('Client/Stations/Show'))->name('stations.autodj');
 
-    // Icecast Connection Settings
-    Route::get('/dashboard/station/{station}/icecast-connection', [ClientStationController::class, 'icecastConnectionGet'])->name('client.station.icecast-connection.get');
-    Route::post('/dashboard/station/{station}/icecast-connection', [ClientStationController::class, 'icecastConnectionSave'])->name('client.station.icecast-connection.save');
+        Route::get('/tv-channels', fn () => inertia('Client/TvChannels/Index'))->name('tv-channels.index');
+        Route::get('/tv-channels/{id}', fn () => inertia('Client/TvChannels/Show'))->name('tv-channels.show');
 
-    // AutoDJ Connection Guide
-    Route::get('/dashboard/station/{station}/autodj-connection', [ClientStationController::class, 'autodjConnectionInfo'])->name('client.station.autodj-connection');
+        Route::get('/media', fn () => inertia('Client/Media/Index'))->name('media.index');
 
-    // Rutas para Streaming de Video (Canal TV)
-    Route::get('/dashboard/canaltv/{station}', [ClientStationController::class, 'showVideo'])->name('client.canaltv.show');
-    Route::get('/dashboard/canaltv/{station}/config', [ClientStationController::class, 'configVideo'])->name('client.canaltv.config');
-    Route::get('/dashboard/canaltv/{station}/widgets', [ClientStationController::class, 'widgetsVideo'])->name('client.canaltv.widgets');
-    Route::get('/dashboard/canaltv/{station}/public', [ClientStationController::class, 'publicVideo'])->name('client.canaltv.public');
-    Route::get('/dashboard/canaltv/{station}/reports', [ClientStationController::class, 'reportsVideo'])->name('client.canaltv.reports');
-    Route::get('/dashboard/canaltv/{station}/reports/data', [ClientStationController::class, 'reportsVideoData'])->name('client.canaltv.reports.data');
-    Route::get('/dashboard/canaltv/{station}/suspend', [ClientStationController::class, 'suspendVideo'])->name('client.canaltv.suspend');
-    Route::get('/dashboard/canaltv/{station}/delete', [ClientStationController::class, 'deleteVideo'])->name('client.canaltv.delete');
-
-    Route::post('/dashboard/canaltv/{station}/config', [ClientStationController::class, 'updateConfigVideo']);
-    Route::post('/dashboard/canaltv/{station}/toggle', [ClientStationController::class, 'toggleStatusVideo']);
-    Route::post('/dashboard/canaltv/{station}/restart', [ClientStationController::class, 'restartStationVideo']);
-    Route::post('/dashboard/canaltv/{station}/suspend', [ClientStationController::class, 'suspendStationVideo']);
-    Route::post('/dashboard/canaltv/{station}/delete', [ClientStationController::class, 'deleteStationVideo']);
-
-    // Video Station — TV Station Media & Schedule
-    Route::get('/dashboard/canaltv/{station}/media', [ClientStationController::class, 'videoMediaPage'])->name('client.canaltv.media');
-    Route::get('/dashboard/canaltv/{station}/media/list', [ClientStationController::class, 'videoMediaList'])->name('client.canaltv.media.list');
-    Route::post('/dashboard/canaltv/{station}/media/store', [ClientStationController::class, 'videoMediaStore'])->name('client.canaltv.media.store');
-    Route::delete('/dashboard/canaltv/{station}/media/{media}', [ClientStationController::class, 'videoMediaDestroy'])->name('client.canaltv.media.destroy');
-    Route::post('/dashboard/canaltv/{station}/media/youtube-dl', [ClientStationController::class, 'videoMediaYoutubeDl'])->name('client.canaltv.media.youtube-dl');
-    Route::get('/dashboard/canaltv/{station}/media/youtube-dl/{job}/progress', [ClientStationController::class, 'videoMediaYoutubeProgress'])->name('client.canaltv.media.youtube-progress');
-
-    Route::get('/dashboard/canaltv/{station}/schedule', [ClientStationController::class, 'videoSchedulePage'])->name('client.canaltv.schedule');
-    Route::get('/dashboard/canaltv/{station}/schedule/list', [ClientStationController::class, 'videoScheduleList'])->name('client.canaltv.schedule.list');
-    Route::post('/dashboard/canaltv/{station}/schedule/add', [ClientStationController::class, 'videoScheduleAdd'])->name('client.canaltv.schedule.add');
-    Route::post('/dashboard/canaltv/{station}/schedule/remove', [ClientStationController::class, 'videoScheduleRemove'])->name('client.canaltv.schedule.remove');
-    Route::post('/dashboard/canaltv/{station}/schedule/reorder', [ClientStationController::class, 'videoScheduleReorder'])->name('client.canaltv.schedule.reorder');
-    Route::get('/dashboard/canaltv/{station}/web-player', [ClientStationController::class, 'webPlayerPage'])->name('client.canaltv.web-player');
-
-    // Herramientas del Cliente
-    Route::get('/dashboard/station/{station}/youtube-downloader', [ClientStationController::class, 'youtubePage'])->name('client.station.youtube');
-    Route::post('/dashboard/station/{station}/youtube-downloader/download', [ClientStationController::class, 'youtubeDownload']);
-    Route::get('/dashboard/station/{station}/web-player', [ClientStationController::class, 'webPlayerPage'])->name('client.station.web-player');
+        Route::get('/statistics', fn () => inertia('Client/Statistics/Index'))->name('statistics.index');
+        Route::get('/profile', fn () => inertia('Client/Profile/Index'))->name('profile.index');
+    });
 });
 
-// Redirección /admin → /admin/dashboard
-Route::get('/admin', function () {
-    return redirect()->route('admin.dashboard');
-})->middleware(['auth', 'admin.role']);
-
-// Rutas del Panel del Administrador
-Route::middleware(['auth', 'admin.role'])->prefix('admin')->group(function () {
-    // Dashboard general
-    Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('admin.dashboard');
-    Route::get('/system-metrics', [AdminDashboardController::class, 'systemMetricsJson'])->name('admin.system-metrics');
-    Route::get('/diagnostics', [AdminDashboardController::class, 'diagnosticsJson'])->name('admin.diagnostics');
-    Route::get('/real-listeners', [AdminDashboardController::class, 'realListenersJson'])->name('admin.real-listeners');
-
-    // Audio Streaming
-    Route::get('/audio', [AdminDashboardController::class, 'audioIndex'])->name('admin.audio');
-    Route::post('/audio/create', [AdminDashboardController::class, 'createAudioStation']);
-    // Dedicated full-page create/edit for audio stations
-    Route::get('/audio/create-form', [AdminDashboardController::class, 'createAudioStationForm'])->name('admin.audio.create');
-    Route::post('/audio/create-full', [AdminDashboardController::class, 'createAudioStationFull'])->name('admin.audio.store');
-    Route::get('/audio/{station}/edit', [AdminDashboardController::class, 'editAudioStationForm'])->name('admin.audio.edit');
-    Route::post('/audio/{station}/edit', [AdminDashboardController::class, 'updateAudioStationFull'])->name('admin.audio.update');
-
-    // Video Streaming
-    Route::get('/video', [AdminDashboardController::class, 'videoIndex'])->name('admin.video');
-    Route::post('/video/create', [AdminDashboardController::class, 'createVideoStation']);
-    // Dedicated full-page create/edit for video stations
-    Route::get('/video/create-form', [AdminDashboardController::class, 'createVideoStationForm'])->name('admin.video.create');
-    Route::post('/video/create-full', [AdminDashboardController::class, 'createVideoStationFull'])->name('admin.video.store');
-    Route::get('/video/{station}/edit', [AdminDashboardController::class, 'editVideoStationForm'])->name('admin.video.edit');
-    Route::post('/video/{station}/edit', [AdminDashboardController::class, 'updateVideoStationFull'])->name('admin.video.update');
-
-    // Clientes
-    Route::get('/clients', [AdminDashboardController::class, 'clientsIndex'])->name('admin.clients');
-    Route::get('/clients/create', [AdminDashboardController::class, 'createClientForm'])->name('admin.clients.create');
-    Route::post('/clients/create', [AdminDashboardController::class, 'storeClient']);
-    Route::get('/clients/{user}', [AdminDashboardController::class, 'showClient'])->name('admin.clients.show');
-    Route::get('/clients/{user}/edit', [AdminDashboardController::class, 'editClientForm'])->name('admin.clients.edit');
-    Route::post('/clients/{user}/edit', [AdminDashboardController::class, 'updateClient']);
-    Route::delete('/clients/{user}', [AdminDashboardController::class, 'deleteClient'])->name('admin.clients.delete');
-    Route::post('/clients/{user}/impersonate', [AuthController::class, 'impersonate'])->name('admin.clients.impersonate');
-
-    // Estadísticas
-    Route::get('/statistics', [AdminStatisticsController::class, 'index'])->name('admin.statistics');
-
-    // Ajustes
-    Route::get('/settings/{section?}', [AdminSettingsController::class, 'index'])->name('admin.settings');
-    Route::post('/settings', [AdminSettingsController::class, 'update'])->name('admin.settings.update');
-
-    // Backups
-    Route::get('/api/backups', [AdminBackupController::class, 'list'])->name('admin.backups.list');
-    Route::post('/api/backups/create', [AdminBackupController::class, 'create'])->name('admin.backups.create');
-    Route::get('/api/backups/download', [AdminBackupController::class, 'download'])->name('admin.backups.download');
-    Route::post('/api/backups/delete', [AdminBackupController::class, 'delete'])->name('admin.backups.delete');
-    Route::post('/api/backups/verify', [AdminBackupController::class, 'verify'])->name('admin.backups.verify');
-
-    // Auditoría — Impersonation Logs
-    Route::get('/api/impersonation-logs', [AdminDashboardController::class, 'impersonationLogs'])->name('admin.impersonation-logs');
-
-    // Plantillas de Email
-    Route::get('/email-templates', [AdminEmailTemplateController::class, 'index'])->name('admin.email-templates');
-    Route::post('/email-templates', [AdminEmailTemplateController::class, 'store'])->name('admin.email-templates.store');
-    Route::put('/email-templates/{template}', [AdminEmailTemplateController::class, 'update'])->name('admin.email-templates.update');
-    Route::delete('/email-templates/{template}', [AdminEmailTemplateController::class, 'destroy'])->name('admin.email-templates.destroy');
-    Route::post('/email-templates/{template}/preview', [AdminEmailTemplateController::class, 'preview'])->name('admin.email-templates.preview');
-    Route::post('/email-templates/{template}/send', [AdminEmailTemplateController::class, 'send'])->name('admin.email-templates.send');
-
-    // Gestión de estaciones (compartido)
-    Route::put('/station/{station}', [AdminDashboardController::class, 'updateStation']);
-    Route::delete('/station/{station}', [AdminDashboardController::class, 'deleteStation']);
-
-    // ── YouTube Downloader ────────────────────────────────────────
-    Route::get('/youtube-downloader', [AdminFeatureController::class, 'youtubePage'])->name('admin.youtube');
-    Route::post('/youtube-downloader/download', [AdminFeatureController::class, 'youtubeDownload'])->name('admin.youtube.download');
-    Route::get('/youtube-downloader/info', [AdminFeatureController::class, 'youtubeInfo'])->name('admin.youtube.info');
-    Route::get('/youtube-downloader/jobs', [AdminFeatureController::class, 'youtubeJobs'])->name('admin.youtube.jobs');
-
-    // ── Web DJ (Control remoto AutoDJ) ───────────────────────────
-    Route::get('/webdj/{station}', [AdminFeatureController::class, 'webDjPage'])->name('admin.webdj');
-    Route::get('/webdj/{station}/stats', [AdminFeatureController::class, 'webDjStats'])->name('admin.webdj.stats');
-    Route::post('/webdj/{station}/command', [AdminFeatureController::class, 'webDjCommand'])->name('admin.webdj.command');
-    Route::get('/webdj/{station}/playlist/{playlist}/tracks', [AdminFeatureController::class, 'webDjPlaylistTracks'])->name('admin.webdj.tracks');
-
-    // ── Web Player Generator ──────────────────────────────────────
-    Route::get('/player-generator', [AdminFeatureController::class, 'playerGeneratorPage'])->name('admin.player-generator');
-
-    // ── REST API Docs ─────────────────────────────────────────────
-    Route::get('/api-docs', [AdminFeatureController::class, 'apiDocsPage'])->name('admin.api-docs');
-
-    // ── Node Manager / Geo-LB ─────────────────────────────────────
-    Route::get('/nodes', [AdminFeatureController::class, 'nodesPage'])->name('admin.nodes');
-    Route::post('/nodes', [AdminFeatureController::class, 'nodesStore'])->name('admin.nodes.store');
-    Route::delete('/nodes/{node}', [AdminFeatureController::class, 'nodesDestroy'])->name('admin.nodes.destroy');
+// Redirect root to dashboard or login
+Route::get('/', function () {
+    if (auth()->check()) {
+        if (auth()->user()->isAdmin()) {
+            return redirect()->route('admin.dashboard');
+        }
+        return redirect()->route('client.dashboard');
+    }
+    return redirect()->route('login');
 });
-
-// ── Public Embeddable Player ─────────────────────────────────────────────────
-Route::get('/player/{slug}', [AdminFeatureController::class, 'publicPlayer'])->name('public.player');
-// SEO-friendly public player routes
-Route::get('/radio/{slug}', [ClientStationController::class, 'viewPublicAudio'])->name('public.radio.listen');
-Route::get('/tv/{slug}', [ClientStationController::class, 'viewPublicVideo'])->name('public.tv.watch');

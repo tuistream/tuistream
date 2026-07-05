@@ -3,9 +3,6 @@
         Options -MultiViews -Indexes
     </IfModule>
 
-    # Fallback: evitar listing si mod_negotiation no está disponible
-    Options -Indexes
-
     RewriteEngine On
 
     # Handle Authorization Header
